@@ -4,7 +4,9 @@ import { colors } from '../../theme';
 import type { ColorValue } from 'react-native';
 
 const icon = (name: keyof typeof Ionicons.glyphMap) =>
-   ({ color, size }: { color: ColorValue; size: number }) => <Ionicons name={name} size={size} color={color as string} />;
+   function TabIcon({ color, size }: { color: ColorValue; size: number }) {
+   return <Ionicons name={name} size={size} color={color as string} />;
+  };
 
 export default function TabsLayout() {
   return (
