@@ -28,6 +28,7 @@ Seules `main` et `develop` sont permanentes. Les autres sont créées au début 
 | Tâche | Branche |
 | --- | --- |
 | CI backend | `chore/ci-backend` |
+| CI mobile | `chore/ci-mobile` |
 | Navigation Expo | `feature/navigation` |
 | SQLite : schéma et tables | `feature/sqlite-setup` |
 | Ordonnances et médicaments | `feature/ordonnances` |
@@ -140,4 +141,4 @@ git push
 
 1. Créer `develop` : `git checkout -b develop` puis `git push -u origin develop`.
 2. Ajouter toute l'équipe en collaboratrices (Settings → Collaborators, rôle Write).
-3. Protéger `main` et `develop` (Settings → Branches) : exiger une Pull Request et que le contrôle `backend` de la CI réussisse avant fusion.
+3. Protéger `main` et `develop` (Settings → Branches) : exiger une Pull Request et que les contrôles `backend` et `mobile` de la CI réussissent avant fusion.

@@ -1,10 +1,21 @@
-## Ce qui a été fait
+## Description
+<!-- Qu'est-ce que cette PR ajoute ou corrige ? -->
 
--
+## Type
+- [ ] feat (fonctionnalité)
+- [ ] fix (correction)
+- [ ] chore (config, CI, docs)
 
-## Vérifications
+## Tâche liée
+<!-- ex : feature/ordonnances -->
 
-- [ ] Les tests passent en local
-- [ ] La CI est verte
-- [ ] Aucun secret ni fichier `.env` commité
-- [ ] Relu par une autre personne
+## Captures d'écran
+<!-- Obligatoire pour une page ou un composant -->
+
+## Checklist
+- [ ] Mon code suit la maquette
+- [ ] Testé sur Android (Expo Go)
+- [ ] `npm run lint` et `npm test` passent
+- [ ] Aucun secret (.env, clé, token) dans les fichiers
+- [ ] Ma PR cible `develop` (pas `main`)
+- [ ] Une autre personne l'a relue
