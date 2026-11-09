@@ -1,2 +1,2 @@
-import { PlaceholderScreen } from '../../components/PlaceholderScreen ';
+import { PlaceholderScreen } from '../../components';
 export default function Accueil() { return <PlaceholderScreen title="Accueil" />; }
