@@ -1,8 +1,10 @@
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Fragment, useState } from 'react';
+import type { ComponentProps } from 'react';
+import type { Tabs } from 'expo-router';
+
 import { colors } from '../theme';
 import { AddSheet } from './AddSheet';
 
@@ -16,6 +18,8 @@ const FAB_SIZE = 60;
 const FAB_OVERLAP = 28; // de combien le bouton « + » dépasse au-dessus de la barre
 
 type IconName = keyof typeof Ionicons.glyphMap;
+// Type des props que Tabs envoie réellement à notre barre
+type TabBarProps = Parameters<NonNullable<ComponentProps<typeof Tabs>['tabBar']>>[0];
 
 const TABS: Record<string, { label: string; icon: IconName; iconActive: IconName }> = {
   index: { label: 'Accueil', icon: 'home-outline', iconActive: 'home' },
@@ -25,21 +29,18 @@ const TABS: Record<string, { label: string; icon: IconName; iconActive: IconName
   profil: { label: 'Moi', icon: 'person-outline', iconActive: 'person' },
 };
 
-export function TabBar({ state, navigation }: BottomTabBarProps) {
+export function TabBar({ state, navigateToTab }: TabBarProps) {
   const insets = useSafeAreaInsets();
 
-  const goTo = (routeName: string, routeKey: string, focused: boolean) => {
-    const event = navigation.emit({ type: 'tabPress', target: routeKey, canPreventDefault: true });
-    if (!focused && !event.defaultPrevented) {
-      navigation.navigate(routeName);
-    }
+  const goTo = (routeKey: string, focused: boolean) => {
+   if (!focused) navigateToTab(routeKey);
   };
  const [addOpen, setAddOpen] = useState(false);
 
   return (
     <View style={[styles.wrapper, { paddingBottom: Math.max(insets.bottom, 8) }]}>
       <View style={styles.bar}>
-               {state.routes.map((route: BottomTabBarProps['state']['routes'][number], index: number) => {
+              {state.routes.map((route, index) => {
           const tab = TABS[route.name];
           if (!tab) return null;
           const focused = state.index === index;
@@ -56,7 +57,7 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
 
               <Pressable
                 style={styles.item}
-                onPress={() => goTo(route.name, route.key, focused)}
+                onPress={() => goTo(route.key, focused)}
                 accessibilityRole="button"
                 accessibilityLabel={tab.label}
                 accessibilityState={{ selected: focused }}
