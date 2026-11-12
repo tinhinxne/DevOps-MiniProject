@@ -27,7 +27,7 @@ export function RegisterScreen() {
 
   const handleRegister = () => {
     // TODO: brancher la vraie création de compte quand elle existera
-    router.replace('/(tabs)');
+    router.replace('/(auth)/onboarding/step-1');
   };
 
   const personIcon = <Ionicons name="person-outline" size={20} color={colors.textMuted} />;
