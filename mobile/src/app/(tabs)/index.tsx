@@ -1,2 +1,3 @@
-import { PlaceholderScreen } from '../../components';
-export default function Accueil() { return <PlaceholderScreen title="Accueil" />; }
+import { HomeScreen } from '../../features/home/HomeScreen';
+
+export default HomeScreen;
