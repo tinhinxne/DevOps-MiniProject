@@ -83,7 +83,7 @@ export default function CaregiverScreen() {
       </View>
 
       {/* Ce qu'elle reçoit */}
-      <Text style={styles.sectionTitle}>CE QU'ELLE REÇOIT</Text>
+      <Text style={styles.sectionTitle}>CE QU’ELLE REÇOIT</Text>
       <View style={styles.card}>
         {RECEIVES.map((item, i) => (
           <View
@@ -103,7 +103,7 @@ export default function CaregiverScreen() {
       <View style={[styles.card, styles.thresholdRow]}>
         <View style={styles.thresholdText}>
           <Text style={styles.thresholdTitle}>Prévenir après</Text>
-          <Text style={styles.thresholdSub}>Oublis consécutifs avant l'alerte</Text>
+          <Text style={styles.thresholdSub}>Oublis consécutifs avant l’alerte</Text>
         </View>
         <Stepper value={threshold} min={1} max={10} onChange={setThreshold} />
       </View>

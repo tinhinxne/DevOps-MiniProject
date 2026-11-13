@@ -69,15 +69,15 @@ export default function InviteCaregiverScreen() {
             <Ionicons name="mail-outline" size={16} color={colors.logoBlue} />
           </View>
           <Text style={styles.bannerText}>
-            Votre aidant reçoit un e-mail d'invitation puis uniquement vos alertes (par exemple
-            après plusieurs oublis), même s'il est loin de vous. Pas besoin de compte.
+            Votre aidant reçoit un e-mail d’invitation puis uniquement vos alertes (par exemple
+            après plusieurs oublis), même s’il est loin de vous. Pas besoin de compte.
           </Text>
         </View>
 
         {/* Formulaire */}
         <View style={styles.card}>
           <View style={styles.field}>
-            <Text style={styles.label}>Prénom de l'aidant</Text>
+            <Text style={styles.label}>Prénom de l’aidant</Text>
             <TextInput
               style={styles.input}
               value={firstName}
@@ -134,7 +134,7 @@ export default function InviteCaregiverScreen() {
           <View style={styles.thresholdRow}>
             <View style={styles.thresholdText}>
               <Text style={styles.label}>Prévenir après</Text>
-              <Text style={styles.thresholdSub}>Oublis consécutifs avant l'alerte</Text>
+              <Text style={styles.thresholdSub}>Oublis consécutifs avant l’alerte</Text>
             </View>
             <Stepper value={threshold} min={1} max={10} onChange={setThreshold} />
           </View>
@@ -151,7 +151,7 @@ export default function InviteCaregiverScreen() {
           accessibilityRole="button"
           accessibilityState={{ disabled: !canSend }}>
           <Ionicons name="mail-outline" size={16} color="#FFFFFF" />
-          <Text style={styles.sendText}>Envoyer l'invitation</Text>
+          <Text style={styles.sendText}>Envoyer l’invitation</Text>
         </Pressable>
 
         <Text style={styles.footer}>Vous pouvez retirer votre aidant à tout moment</Text>

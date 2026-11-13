@@ -108,12 +108,12 @@ export default function ReportPreviewScreen() {
           <View style={styles.divider} />
 
           <Text style={styles.disclaimer}>
-            Ce rapport est généré à partir des prises enregistrées dans l'application. Il présente
-            une synthèse de l'observance et ne remplace pas l'avis d'un professionnel de santé.
+            Ce rapport est généré à partir des prises enregistrées dans l’application. Il présente
+            une synthèse de l’observance et ne remplace pas l’avis d’un professionnel de santé.
           </Text>
 
           {/* Synthèse */}
-          <SectionTitle>Synthèse de l'observance</SectionTitle>
+          <SectionTitle>Synthèse de l’observance</SectionTitle>
           <View style={styles.statsRow}>
             <Stat value={`${report.stats.adherence}%`} label="Observance" color={TEAL} />
             <Stat value={`${report.stats.taken}`} label="Bien prises" color={BLUE} />
@@ -160,7 +160,7 @@ export default function ReportPreviewScreen() {
           <View style={styles.divider} />
 
           {/* Points d'attention */}
-          <SectionTitle>Points d'attention pour le médecin</SectionTitle>
+          <SectionTitle>Points d’attention pour le médecin</SectionTitle>
           <View style={styles.alerts}>
             {report.alerts.map((a) => (
               <View key={a} style={styles.alertRow}>
