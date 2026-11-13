@@ -27,6 +27,10 @@ export const colors = {
   modeSelected: '#0F6B33',
  brandName: '#0A77AD',
   textSoft: '#536371',
+
+   screenBackground: '#EBF5FA',
+  segmentTrack: '#E4EFF6',
+  accentBar: '#38CAB0',
 };
 
 export const spacing = { xs: 4, sm: 8, md: 16, lg: 24, xl: 32 };
