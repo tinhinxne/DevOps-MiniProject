@@ -24,10 +24,14 @@ export function LoginScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  const handleLogin = () => {
-    // TODO: brancher la vraie connexion quand elle existera
-    router.replace('/(tabs)');
-  };
+ const handleLogin = () => {
+  // TODO: brancher la vraie connexion quand elle existera
+  if (mode === 'aidant') {
+    router.replace('/patient-suivi'); // proche → choisir le patient suivi
+  } else {
+    router.replace('/(tabs)'); // "Ma santé" → accueil direct
+  }
+};
 
   return (
     <SafeAreaView style={styles.safe}>
