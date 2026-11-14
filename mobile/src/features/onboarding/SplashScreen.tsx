@@ -35,7 +35,7 @@ export function SplashScreen() {
         <Button
           title="Commencer"
           variant="light"
-          onPress={() => router.replace('/login')}
+          onPress={() => router.replace('/(auth)/onboarding/step-1')}
           rightIcon={<Ionicons name="chevron-forward" size={18} color={colors.text} />}
         />
       </View>

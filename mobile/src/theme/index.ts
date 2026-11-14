@@ -31,6 +31,9 @@ export const colors = {
    screenBackground: '#EBF5FA',
   segmentTrack: '#E4EFF6',
   accentBar: '#38CAB0',
+    violet: '#8B5CF6',        // pastille de la 3e prise
+  tintWarning: '#FEF3C7',   // boîte « prise en retard »
+  neutral: '#CBD5E1',       // prise à venir (pastille grise)
 };
 
 export const spacing = { xs: 4, sm: 8, md: 16, lg: 24, xl: 32 };

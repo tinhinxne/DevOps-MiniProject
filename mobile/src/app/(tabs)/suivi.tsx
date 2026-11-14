@@ -1,5 +1,5 @@
-import { PlaceholderScreen } from '../../components';
-
-export default function Screen() {
-  return <PlaceholderScreen title="Suivi" />;
+// src/app/(tabs)/suivi.tsx
+import { SuiviPrisesScreen } from '../../features/suivi/SuiviPrisesScreen';
+export default function Suivi() {
+  return <SuiviPrisesScreen mode="patient" />; // "aidant" quand le mode sera géré
 }
