@@ -29,24 +29,7 @@ import { ReactNode } from 'react';
 import { View, Text, TextInput, TextInputProps, StyleSheet } from 'react-native';
 import { colors, radius, spacing, fontSize } from '../theme';
 
-// type Props = TextInputProps & {
-//   label?: string;
-//   leftIcon?: ReactNode;
-//   rightIcon?: ReactNode;
-// };
 
-// export function Input({ label, leftIcon, rightIcon, ...props }: Props) {
-//   return (
-//     <View style={styles.wrapper}>
-//       {label ? <Text style={styles.label}>{label}</Text> : null}
-//       <View style={styles.field}>
-//         {leftIcon}
-//         <TextInput placeholderTextColor={colors.textMuted} style={styles.input} {...props} />
-//         {rightIcon}
-//       </View>
-//     </View>
-//   );
-// }
 type Props = TextInputProps & {
   label?: string;
   labelColor?: string;

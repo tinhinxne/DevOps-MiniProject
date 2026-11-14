@@ -112,12 +112,12 @@ export function AjoutMed() {
               })}
 
               <View style={styles.sep} />
-              <Pressable onPress={() => {}} style={styles.manual}>
+              <Pressable onPress={() => router.push('/saisie-manuelle')} style={styles.manual}>
                 <Text style={styles.manualText}>Introuvable ? Saisir manuellement</Text>
               </Pressable>
             </Card>
           ) : query.trim().length > 0 ? (
-            <Pressable onPress={() => {}} style={styles.manual}>
+            <Pressable onPress={() => router.push('/saisie-manuelle')} style={styles.manual}>
               <Text style={styles.manualText}>Aucun résultat. Saisir manuellement</Text>
             </Pressable>
           ) : null}
