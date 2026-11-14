@@ -26,9 +26,9 @@ export function RegisterScreen() {
   const [showPassword, setShowPassword] = useState(false);
 
   const handleRegister = () => {
-    // TODO: brancher la vraie création de compte quand elle existera
-    router.replace('/(auth)/onboarding/step-1');
-  };
+  // TODO: brancher la vraie création de compte quand elle existera
+  router.replace('/(tabs)'); // adapte avec ta vraie route d'accueil
+};
 
   const personIcon = <Ionicons name="person-outline" size={20} color={colors.textMuted} />;
 

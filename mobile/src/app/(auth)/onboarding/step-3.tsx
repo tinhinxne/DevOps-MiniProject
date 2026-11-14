@@ -10,8 +10,8 @@ export default function Step3() {
       title={'Votre routine santé\nvous attend'}
       description="Ajoutez votre premier médicament en quelques secondes. Nous nous occupons du reste."
       buttonTitle="Commencer"
-      onNext={() => router.replace('/(tabs)')}
-onSkip={() => router.replace('/(tabs)')}
+      onNext={() => router.replace('/login')}
+onSkip={() => router.replace('/login')}
     />
   );
 }

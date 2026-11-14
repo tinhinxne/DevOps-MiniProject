@@ -14,3 +14,4 @@ export { BrandHeader } from './BrandHeader';
 export { GradientBox } from './GradiantBox';
 
 export { SegmentedTabs } from './SegmentedTabs';
+export { NotifBell } from './NotifBell';
