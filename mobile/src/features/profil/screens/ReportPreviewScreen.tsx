@@ -1,9 +1,10 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, spacing } from '@/theme';
+import { mockFollowed } from '../data/mockProfile';
 
 // TODO : remplacer ces données d'exemple par les vraies données (profil + historique des prises des 30 derniers jours)
 const report = {
@@ -52,6 +53,13 @@ export default function ReportPreviewScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
+  // Mode aidant : personId est fourni. Mode patient : il est absent.
+  const { personId } = useLocalSearchParams<{ personId?: string }>();
+  const person = mockFollowed.find((p) => p.id === personId);
+
+  // TODO : charger les vraies données de la personne (person?.id) ; pour l'instant on remplace seulement le nom
+  const patientName = person ? person.name : report.patient;
+
   const onExport = () => {
     // TODO : générer le PDF (expo-print) puis le partager (expo-sharing)
   };
@@ -68,7 +76,9 @@ export default function ReportPreviewScreen() {
           hitSlop={8}>
           <Ionicons name="chevron-back" size={24} color="#0F172A" />
         </Pressable>
-        <Text style={styles.headerTitle}>Aperçu du rapport</Text>
+        <Text style={styles.headerTitle}>
+          {person ? `Rapport · ${person.name}` : 'Aperçu du rapport'}
+        </Text>
         <View style={styles.back} />
       </View>
 
@@ -88,7 +98,7 @@ export default function ReportPreviewScreen() {
               <View style={styles.meta}>
                 <Text style={styles.metaText}>
                   <Text style={styles.metaBold}>Patient : </Text>
-                  {report.patient}
+                  {patientName}
                 </Text>
                 <Text style={styles.metaText}>
                   <Text style={styles.metaBold}>Période du rapport : </Text>

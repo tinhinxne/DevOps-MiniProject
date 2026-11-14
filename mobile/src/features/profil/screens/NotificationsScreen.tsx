@@ -2,10 +2,11 @@ import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, spacing } from '@/theme';
-import { SubPageHeader } from '../components/SubPageHeader';
+import { SubPageHeader } from '../../../components/SubPageHeader';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -94,6 +95,10 @@ function AppSwitch({ value, onChange }: { value: boolean; onChange: (v: boolean)
 export default function NotificationsScreen() {
   const insets = useSafeAreaInsets();
 
+  // Le mode est envoyé par ProfilScreen : 'aidant' ou 'patient'
+  const { mode } = useLocalSearchParams<{ mode?: string }>();
+  const isAidant = mode === 'aidant';
+
   // TODO : charger / sauvegarder ces réglages (API ou stockage local)
   const [intakeReminders, setIntakeReminders] = useState(true);
   const [soundVibration, setSoundVibration] = useState(true);
@@ -112,12 +117,16 @@ export default function NotificationsScreen() {
       showsVerticalScrollIndicator={false}>
       <SubPageHeader title="Notifications" />
 
-      <Text style={styles.sectionTitle}>MES RAPPELS</Text>
+      <Text style={styles.sectionTitle}>{isAidant ? 'ALERTES DE MES PROCHES' : 'MES RAPPELS'}</Text>
       <View style={styles.card}>
         <Row
           icon="notifications-outline"
-          title="Rappels de prise"
-          subtitle="Notification à l'heure du médicament"
+          title={isAidant ? 'Alertes de prise' : 'Rappels de prise'}
+          subtitle={
+            isAidant
+              ? "Notification à l'heure du médicament de vos proches"
+              : "Notification à l'heure du médicament"
+          }
           right={<AppSwitch value={intakeReminders} onChange={setIntakeReminders} />}
         />
         <Row
@@ -129,13 +138,15 @@ export default function NotificationsScreen() {
         <Row
           icon="calendar-outline"
           title="Résumé quotidien"
-          subtitle="Bilan des prises chaque soir"
+          subtitle={
+            isAidant ? 'Bilan des prises de vos proches chaque soir' : 'Bilan des prises chaque soir'
+          }
           right={<AppSwitch value={dailySummary} onChange={setDailySummary} />}
         />
         <Row
           icon="time-outline"
-          title="Délai avant relance"
-          subtitle="Si la prise n'est pas validée"
+          title={isAidant ? 'Délai avant alerte' : 'Délai avant relance'}
+          subtitle={isAidant ? "Si la prise n'est pas validée par la personne" : "Si la prise n'est pas validée"}
           right={<Stepper value={delay} unit="min" min={5} max={60} step={5} onChange={setDelay} />}
         />
         <Row
@@ -147,26 +158,30 @@ export default function NotificationsScreen() {
         />
       </View>
 
-      <Text style={styles.sectionTitle}>MON AIDANTE</Text>
-      <View style={styles.card}>
-        <Row
-          icon="warning-outline"
-          tone="green"
-          title="Alerte d'oublis répétés"
-          subtitle="Prévenir Sophie après plusieurs oublis"
-          right={<AppSwitch value={missedAlert} onChange={setMissedAlert} />}
-        />
-        <Row
-          icon="download-outline"
-          title="Exporter mes données"
-          subtitle="Envoyer l'historique des prises au format PDF à mon aidante"
-          right={<Ionicons name="chevron-forward" size={18} color="#64748B" />}
-          onPress={() => {
-            // TODO : générer et envoyer le PDF
-          }}
-          isLast
-        />
-      </View>
+      {!isAidant && (
+        <>
+          <Text style={styles.sectionTitle}>MON AIDANTE</Text>
+          <View style={styles.card}>
+            <Row
+              icon="warning-outline"
+              tone="green"
+              title="Alerte d'oublis répétés"
+              subtitle="Prévenir Sophie après plusieurs oublis"
+              right={<AppSwitch value={missedAlert} onChange={setMissedAlert} />}
+            />
+            <Row
+              icon="download-outline"
+              title="Exporter mes données"
+              subtitle="Envoyer l'historique des prises au format PDF à mon aidante"
+              right={<Ionicons name="chevron-forward" size={18} color="#64748B" />}
+              onPress={() => {
+                // TODO : générer et envoyer le PDF
+              }}
+              isLast
+            />
+          </View>
+        </>
+      )}
     </ScrollView>
   );
 }

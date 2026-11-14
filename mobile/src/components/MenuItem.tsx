@@ -3,8 +3,7 @@ import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, fontSize, radius, spacing } from '@/theme';
-import type { IconName } from '../types';
-
+import type { IconName } from '../features/profil/types';
 type Tone = 'patient' | 'aidant';
 
 const TONES: Record<Tone, { background: string; foreground: string }> = {

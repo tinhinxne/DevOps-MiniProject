@@ -13,12 +13,12 @@ export function AppHeader({ onPressNotifications }: Props) {
     <View style={styles.row}>
       <View style={styles.logo}>
         <Image
-          source={require('../../../assets/images/logo-icon.png')}
+          source={require('../assets/images/logo-icon.png')}
           style={styles.icon}
           contentFit="contain"
         />
         <Image
-          source={require('../../../assets/images/logo-wordmark.png')}
+          source={require('../assets/images/logo-wordmark.png')}
           style={styles.wordmark}
           contentFit="contain"
         />
