@@ -1,10 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Button, Input } from '../../components';
+import { Button, DateTimeField, Input } from '../../components';
 import { colors, fontSize, radius, spacing } from '../../theme';
 import { formatShortDate, formatTime } from '../../utils/datetime';
-import { DateTimeField } from './DateTimeField';
+
 import { getRendezVous, RendezVous } from './mock';
 
 type Props = { onSaved?: () => void };
@@ -80,28 +80,7 @@ export function RendezVousTab({ onSaved }: Props) {
         <Text style={styles.sectionTitleText}>Nouveau rendez-vous</Text>
       </View>
 
-      {/* <View style={styles.row}>
-        <View style={styles.dateCol}>
-          <Input
-            label="Date"
-            labelColor={colors.textSoft}
-            value={date}
-            onChangeText={setDate}
-            placeholder="JJ/MM/AAAA"
-            keyboardType="numbers-and-punctuation"
-          />
-        </View>
-        <View style={styles.timeCol}>
-          <Input
-            label="Heure"
-            labelColor={colors.textSoft}
-            value={time}
-            onChangeText={setTime}
-            placeholder="HH:MM"
-            keyboardType="numbers-and-punctuation"
-          />
-        </View>
-      </View> */}
+    
 
             <View style={styles.row}>
         <View style={styles.dateCol}>

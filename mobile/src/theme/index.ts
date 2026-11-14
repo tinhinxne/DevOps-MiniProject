@@ -36,6 +36,13 @@ export const colors = {
     violet: '#8B5CF6',        // pastille de la 3e prise
   tintWarning: '#FEF3C7',   // boîte « prise en retard »
   neutral: '#CBD5E1',       // prise à venir (pastille grise)
+    brandDeep: '#0B5C7E',
+  textLabel: '#4A6B7C',
+  successDeep: '#0E6B4F',
+  tintMint: '#D6EFE6',
+  pageBackground: '#F1F8FC',
+  tintSky: '#E9F6FC',
+  
 };
 
 export const spacing = { xs: 4, sm: 8, md: 16, lg: 24, xl: 32 };
