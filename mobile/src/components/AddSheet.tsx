@@ -3,6 +3,7 @@ import { Animated, Easing, Modal, Pressable, StyleSheet, Text, View } from 'reac
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme';
+import { useRouter } from 'expo-router';
 
 export type AddChoice = 'medicament' | 'ordonnance' | 'rendez-vous';
 
@@ -21,6 +22,7 @@ const OPTIONS: {
   { key: 'rendez-vous', title: 'Un rendez-vous', subtitle: 'Planifier un rappel', icon: 'calendar-outline', color: colors.warning, bg: '#FFEDD5' },
 ];
 
+
 type Props = {
   visible: boolean;
   onClose: () => void;
@@ -28,8 +30,10 @@ type Props = {
 };
 
 export function AddSheet({ visible, onClose, onSelect }: Props) {
-  const insets = useSafeAreaInsets();
-  const [progress] = useState(() => new Animated.Value(0));
+  // après
+const insets = useSafeAreaInsets();
+const router = useRouter();
+const [progress] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     if (visible) {
@@ -51,12 +55,18 @@ export function AddSheet({ visible, onClose, onSelect }: Props) {
       easing: Easing.in(Easing.cubic),
       useNativeDriver: true,
     }).start(() => {
-      onClose();
-      if (choice) onSelect?.(choice);
-    });
+  onClose();
+  if (choice) onSelect?.(choice);
+  if (choice === 'medicament') router.push('/ajout-med');
+  if (choice === 'rendez-vous') router.push('/ajout-rdv');
+  
+});
   };
+  
 
   const translateY = progress.interpolate({ inputRange: [0, 1], outputRange: [420, 0] });
+  
+
 
   return (
     <Modal visible={visible} transparent animationType="none" statusBarTranslucent onRequestClose={() => close()}>
