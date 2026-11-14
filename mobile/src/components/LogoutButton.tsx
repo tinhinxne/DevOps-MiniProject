@@ -2,8 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text } from 'react-native';
 
 import { colors, fontSize, radius, spacing } from '@/theme';
-import { profilExtras } from '../constants';
-
+import { profilExtras } from '../features/profil/constants';
 type Props = {
   onPress?: () => void;
 };

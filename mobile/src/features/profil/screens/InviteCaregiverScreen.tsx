@@ -15,8 +15,8 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, spacing } from '@/theme';
-import { SubPageHeader } from '../components/SubPageHeader';
-import { Stepper } from '../components/Stepper';
+import { SubPageHeader } from '../../../components/SubPageHeader';
+import { Stepper } from '../../../components/Stepper';
 
 const BORDER = '#D6E6F5';
 const FIELD_BG = '#F4F8FD';

@@ -10,10 +10,13 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, spacing } from '@/theme';
-import { SubPageHeader } from '../components/SubPageHeader';
+import { SubPageHeader } from '../../../components/SubPageHeader';
+
+import { mockFollowed } from '../data/mockProfile';
 
 const BORDER = '#D6E6F5';
 const FIELD_BG = '#F4F8FD';
@@ -50,7 +53,11 @@ function SectionTitle({ children }: { children: string }) {
 export default function MedicalProfileScreen() {
   const insets = useSafeAreaInsets();
 
-  // TODO : initialiser avec les données de useProfile() puis envoyer à l'API dans onSave
+  // Mode aidant : personId est fourni. Mode patient : il est absent.
+  const { personId } = useLocalSearchParams<{ personId?: string }>();
+  const person = mockFollowed.find((p) => p.id === personId);
+
+  // TODO : initialiser avec les données de useProfile() (ou de la personne suivie) puis envoyer à l'API dans onSave
   const [selected, setSelected] = useState<string[]>([]);
   const [other, setOther] = useState('');
   const [allergies, setAllergies] = useState('');
@@ -66,7 +73,7 @@ export default function MedicalProfileScreen() {
     setSelected((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
 
   const onSave = () => {
-    // TODO : appeler le service de mise à jour du profil médical
+    // TODO : appeler le service de mise à jour du profil médical (avec person?.id si aidant)
   };
 
   return (
@@ -80,7 +87,7 @@ export default function MedicalProfileScreen() {
         ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}>
-        <SubPageHeader title="Profil médical" />
+        <SubPageHeader title={person ? `Profil médical · ${person.name}` : 'Profil médical'} />
 
         {/* Bandeau confidentialité */}
         <View style={styles.banner}>
@@ -88,8 +95,9 @@ export default function MedicalProfileScreen() {
             <Ionicons name="lock-closed-outline" size={16} color={colors.logoBlue} />
           </View>
           <Text style={styles.bannerText}>
-            Facultatif. Ces informations restent privées et ne sont pas partagées avec votre
-            aidante.
+            {person
+              ? `Informations médicales de ${person.name}. Elles restent privées et ne sont visibles que par vous et ${person.name}.`
+              : 'Facultatif. Ces informations restent privées et ne sont pas partagées avec votre aidante.'}
           </Text>
         </View>
 
@@ -138,7 +146,7 @@ export default function MedicalProfileScreen() {
         </View>
 
         {/* Habitudes */}
-        <SectionTitle>MES HABITUDES</SectionTitle>
+        <SectionTitle>{person ? 'SES HABITUDES' : 'MES HABITUDES'}</SectionTitle>
         <View style={styles.card}>
           <Text style={styles.hint}>Elles servent à proposer des heures de rappel adaptées.</Text>
           <View style={styles.habits}>

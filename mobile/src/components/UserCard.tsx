@@ -1,7 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import { colors, fontSize, radius, spacing } from '@/theme';
-import type { UserProfile } from '../types';
+import type { UserProfile } from '../features/profil/types';
 
 type Props = {
   profile: UserProfile;

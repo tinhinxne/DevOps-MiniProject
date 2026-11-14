@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, fontSize, radius, spacing } from '@/theme';
-import type { IconName, UsageMode } from '../types';
+import type { IconName, UsageMode } from '../features/profil/types';
 
 const OPTIONS: { value: UsageMode; label: string; icon: IconName }[] = [
   { value: 'patient', label: 'Patient', icon: 'person-outline' },
