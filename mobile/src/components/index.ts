@@ -12,3 +12,5 @@ export { ModeCard } from './ModeCard';
 
 export { BrandHeader } from './BrandHeader';
 export { GradientBox } from './GradiantBox';
+
+export { SegmentedTabs } from './SegmentedTabs';

@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, Polyline } from 'react-native-svg';
 import { Card, GradientBox } from '../../components';
 import { colors, fontSize, radius, spacing } from '../../theme';
+import { useRouter } from 'expo-router';
 
 // ---- Données de démo (à remplacer par la vraie source plus tard) ----
 type Med = {
@@ -71,12 +72,19 @@ function Sparkline({ data, color, dashed }: { data: number[]; color: string; das
     />
   );
 }
-
-function SectionHeader({ title, action }: { title: string; action: string }) {
+function SectionHeader({
+  title,
+  action,
+  onPress,
+}: {
+  title: string;
+  action: string;
+  onPress?: () => void;
+}) {
   return (
     <View style={styles.sectionRow}>
       <Text style={styles.sectionTitle}>{title}</Text>
-      <Pressable hitSlop={8}>
+      <Pressable hitSlop={8} onPress={onPress}>
         <Text style={styles.sectionAction}>{action}</Text>
       </Pressable>
     </View>
@@ -132,6 +140,7 @@ function MedItem({ med }: { med: Med }) {
 
 // ---- Écran ----
 export function HomeScreen() {
+  const router = useRouter();
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -203,8 +212,12 @@ export function HomeScreen() {
           </View>
         </Card>
 
-        {/* Prochain rendez-vous */}
-        <SectionHeader title="Prochain rendez-vous" action="Voir tout ›" />
+                {/* Prochain rendez-vous */}
+        <SectionHeader
+          title="Prochain rendez-vous"
+          action="Voir tout ›"
+          onPress={() => router.push('/rdv-notes')}
+        />
         <Card style={styles.card}>
           <View style={styles.apptRow}>
             <View style={styles.smallIcon}>
