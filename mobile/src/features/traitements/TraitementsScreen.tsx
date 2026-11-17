@@ -84,7 +84,10 @@ const ajouter = () =>
       statut: 'active',
       photoUri: res.assets[0].uri,
     };
-    setListe((l) => [nouvelle, ...l]);
+    setListe((l) => [
+  nouvelle,
+  ...l.map((o) => (o.statut === 'active' ? { ...o, statut: 'ancienne' as const } : o)),
+]);
     setDetailId(nouvelle.id);
   };
 
@@ -123,24 +126,27 @@ const ajouter = () =>
                 <Card style={styles.activeCard}>
                   <Miniature uri={active.photoUri} />
                   <View style={styles.activeInfo}>
-                    <Text style={styles.body}>Délivrée le {active.delivreeLe}</Text>
-                    <View
-                      style={[
-                        styles.badge,
-                        { backgroundColor: colors.tintBlue, alignSelf: 'flex-start' },
-                      ]}>
-                      <Text style={[styles.badgeText, { color: colors.brandDeep }]}>
-                        Valable jusqu'au : {active.expireLe}
-                      </Text>
-                    </View>
-                    <Pressable
-                      onPress={() => setDetailId(active.id)}
-                      accessibilityRole="button"
-                      style={styles.linkRow}>
-                      <Text style={styles.link}>Voir les détails</Text>
-                      <Ionicons name="chevron-forward" size={14} color={colors.brandDeep} />
-                    </Pressable>
-                  </View>
+  <Text style={styles.body}>Délivrée le {active.delivreeLe}</Text>
+  <View style={[styles.badge, { backgroundColor: colors.tintBlue, alignSelf: 'flex-start' }]}>
+    <Text style={[styles.badgeText, { color: colors.brandDeep }]}>
+      Valable jusqu'au : {active.expireLe}
+    </Text>
+  </View>
+  <ExpirationBadge expireLe={active.expireLe} />
+  {joursRestants(active.expireLe) <= 30 && (
+    <Pressable onPress={scanner} accessibilityRole="button" style={styles.renewBtn}>
+      <Ionicons name="refresh" size={14} color={colors.white} />
+      <Text style={styles.renewText}>Renouveler</Text>
+    </Pressable>
+  )}
+  <Pressable
+    onPress={() => setDetailId(active.id)}
+    accessibilityRole="button"
+    style={styles.linkRow}>
+    <Text style={styles.link}>Voir les détails</Text>
+    <Ionicons name="chevron-forward" size={14} color={colors.brandDeep} />
+  </Pressable>
+</View>
                 </Card>
               </View>
             )}
@@ -243,7 +249,40 @@ const ajouter = () =>
     </SafeAreaView>
   );
 }
+function joursRestants(expireLe: string): number {
+  const [j, m, a] = expireLe.split('/').map(Number);
+  const fin = new Date(a, m - 1, j);
+  const auj = new Date();
+  auj.setHours(0, 0, 0, 0);
+  return Math.round((fin.getTime() - auj.getTime()) / 86400000);
+}
 
+function ExpirationBadge({ expireLe }: { expireLe: string }) {
+  const jours = joursRestants(expireLe);
+  const s = Math.abs(jours) > 1 ? 's' : '';
+  let texte = `Expire dans ${jours} jour${s}`;
+  let fond: string = colors.tintMint;
+  let couleur: string = colors.successDeep;
+
+  if (jours < 0) {
+    texte = `Expirée depuis ${-jours} jour${s}`;
+    fond = colors.tintDanger;
+    couleur = colors.danger;
+  } else if (jours === 0) {
+    texte = "Expire aujourd'hui";
+    fond = colors.tintWarning;
+    couleur = '#92400E';
+  } else if (jours <= 7) {
+    fond = colors.tintWarning;
+    couleur = '#92400E';
+  }
+
+  return (
+    <View style={[styles.badge, { backgroundColor: fond, alignSelf: 'flex-start' }]}>
+      <Text style={[styles.badgeText, { color: couleur }]}>{texte}</Text>
+    </View>
+  );
+}
 function Recherche({
   valeur,
   onChange,
@@ -479,4 +518,14 @@ const styles = StyleSheet.create({
     backgroundColor: colors.brandDeep,
   },
   addText: { fontSize: fontSize.md, fontWeight: '700', color: colors.white },
+  renewBtn: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: spacing.xs,
+  paddingVertical: spacing.sm,
+  borderRadius: radius.pill,
+  backgroundColor: colors.brandDeep,
+},
+renewText: { fontSize: fontSize.sm, fontWeight: '700', color: colors.white },
 });

@@ -11,6 +11,9 @@ import {
   Text,
   View,
 } from 'react-native';
+import { Alert } from 'react-native'; // ou ajoute Alert à ton import react-native existant
+import { medicaments } from '../traitements/mock';
+import { detecterInteractions, Interaction } from './interactions';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, DateTimeField, Input } from '../../components';
 import { colors, fontSize, radius, spacing } from '../../theme';
@@ -45,7 +48,11 @@ export function ConfigurerPriseScreen() {
   const [instructions, setInstructions] = useState('');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [error, setError] = useState('');
-
+  const interactions = detecterInteractions(
+  { nom, dci },
+  medicaments.map((m) => ({ nom: m.nom })),
+);
+const alerte = interactions[0];
   const plural = (n: number) => (n > 1 && !forme.endsWith('s') ? `${forme}s` : forme);
   const prisesParJour = selectedIds.length;
   const total = prisesParJour * quantity * days;
@@ -72,29 +79,44 @@ export function ConfigurerPriseScreen() {
     if (!res.canceled) setPhotoUri(res.assets[0].uri);
   };
 
-  const handleSave = () => {
-    if (selectedIds.length === 0) {
-      setError('Choisis au moins un moment de prise.');
-      return;
-    }
-    const times = moments
-      .filter((m) => selectedIds.includes(m.id))
-      .map((m) => m.time)
-      .sort();
-    addManualMedication({
-      name: nom,
-      dosage,
-      forme,
-      times,
-      frequence,
-      durationDays: days,
-      quantity,
-      startDate: startDate.toISOString(),
-      instructions: instructions.trim(),
-    });
-    setError('');
-    router.replace('/ordonnances');
-  };
+  const enregistrer = () => {
+  const times = moments
+    .filter((m) => selectedIds.includes(m.id))
+    .map((m) => m.time)
+    .sort();
+  addManualMedication({
+    name: nom,
+    dosage,
+    forme,
+    times,
+    frequence,
+    durationDays: days,
+    quantity,
+    startDate: startDate.toISOString(),
+    instructions: instructions.trim(),
+  });
+  setError('');
+  router.replace('/ordonnances');
+};
+
+const handleSave = () => {
+  if (selectedIds.length === 0) {
+    setError('Choisis au moins un moment de prise.');
+    return;
+  }
+  if (alerte?.gravite === 'rouge') {
+    Alert.alert(
+      'Interaction grave',
+      `${alerte.message}\n\nVoulez-vous quand même l'ajouter ?`,
+      [
+        { text: 'Annuler', style: 'cancel' },
+        { text: 'Ajouter quand même', style: 'destructive', onPress: enregistrer },
+      ],
+    );
+    return;
+  }
+  enregistrer();
+};
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -241,9 +263,12 @@ export function ConfigurerPriseScreen() {
         </ScrollView>
 
         <View style={styles.footer}>
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-          <Button title="Ajouter au traitement" variant="deep" onPress={handleSave} />
-        </View>
+  {alerte ? (
+    <AlerteInteraction interaction={alerte} autres={interactions.length - 1} />
+  ) : null}
+  {error ? <Text style={styles.error}>{error}</Text> : null}
+  <Button title="Ajouter au traitement" variant="deep" onPress={handleSave} />
+</View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -270,7 +295,33 @@ function Stepper({
     </View>
   );
 }
+const ALERTE_STYLE = {
+  jaune: { fond: colors.tintWarning, bord: colors.warning, texte: '#92400E', icone: 'information-circle', titre: 'Interaction à surveiller' },
+  orange: { fond: '#FFEDD5', bord: '#FB923C', texte: '#9A3412', icone: 'warning', titre: 'Interaction importante' },
+  rouge: { fond: colors.tintDanger, bord: colors.danger, texte: '#991B1B', icone: 'alert-circle', titre: 'Interaction grave' },
+} as const;
 
+function AlerteInteraction({ interaction, autres }: { interaction: Interaction; autres: number }) {
+  const s = ALERTE_STYLE[interaction.gravite];
+  return (
+    <View
+      accessibilityRole="alert"
+      style={[styles.alerte, { backgroundColor: s.fond, borderColor: s.bord }]}>
+      <Ionicons name={s.icone} size={22} color={s.texte} />
+      <View style={styles.flex}>
+        <Text style={[styles.alerteTitre, { color: s.texte }]}>
+          {s.titre} avec {interaction.avec}
+        </Text>
+        <Text style={[styles.alerteTexte, { color: s.texte }]}>{interaction.message}</Text>
+        {autres > 0 && (
+          <Text style={[styles.alerteTexte, { color: s.texte }]}>
+            + {autres} autre{autres > 1 ? 's' : ''} interaction{autres > 1 ? 's' : ''}
+          </Text>
+        )}
+      </View>
+    </View>
+  );
+}
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.pageBackground },
   flex: { flex: 1 },
@@ -289,7 +340,16 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: fontSize.lg, fontWeight: '700', color: colors.brandDeep },
   subtitle: { fontSize: fontSize.sm, color: colors.textLabel },
-
+  alerte: {
+  flexDirection: 'row',
+  alignItems: 'flex-start',
+  gap: spacing.sm,
+  padding: spacing.md,
+  borderRadius: radius.md,
+  borderWidth: 1.5,
+},
+alerteTitre: { fontSize: fontSize.sm, fontWeight: '700' },
+alerteTexte: { fontSize: fontSize.xs },
   medCard: {
     flexDirection: 'row',
     alignItems: 'center',
