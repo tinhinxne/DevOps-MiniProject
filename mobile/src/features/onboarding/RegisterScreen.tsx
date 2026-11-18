@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
+import { useAuth } from '../auth/AuthContext';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -13,22 +14,46 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BrandHeader, Button, Input, ModeCard } from '../../components';
 import { colors, fontSize, radius, spacing } from '../../theme';
+import { register } from '../../utils/api';
 
 type Mode = 'patient' | 'aidant';
 
 export function RegisterScreen() {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>('patient');
-  const [name, setName] = useState('');
-  const [username, setUsername] = useState('');
+  const [prenom, setPrenom] = useState('');
+  const [nomUtil, setNomUtil] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const { signIn } = useAuth();
 
-  const handleRegister = () => {
-  // TODO: brancher la vraie création de compte quand elle existera
-  router.replace('/(tabs)'); // adapte avec ta vraie route d'accueil
-};
+  const handleRegister = async () => {
+    if (loading) return;
+    setError('');
+
+    if (!prenom.trim() || !nomUtil.trim() || !email.trim() || !password) {
+      setError('Tous les champs sont obligatoires.');
+      return;
+    }
+    if (password.length < 8) {
+      setError('Le mot de passe doit contenir 8 caractères minimum.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+     const data = await register(nomUtil.trim(), prenom.trim(), email.trim(), password);
+await signIn(data);          // sauvegarde le token + l'utilisateur
+router.replace('/(tabs)');   // va au dashboard
+    } catch (e: any) {
+      setError(e.message || 'Impossible de contacter le serveur.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const personIcon = <Ionicons name="person-outline" size={20} color={colors.textMuted} />;
 
@@ -80,19 +105,19 @@ export function RegisterScreen() {
 
           <View style={styles.form}>
             <Input
-              label="Nom d'utilisateur"
+              label="Prénom"
               labelColor={colors.textSoft}
-              value={name}
-              onChangeText={setName}
-              placeholder="Votre nom"
+              value={prenom}
+              onChangeText={setPrenom}
+              placeholder="Votre prénom"
               leftIcon={personIcon}
             />
             <Input
-              label="Pseudo"
+              label="Nom d'utilisateur"
               labelColor={colors.textSoft}
-              value={username}
-              onChangeText={setUsername}
-              placeholder="Votre nom d'utilisateur"
+              value={nomUtil}
+              onChangeText={setNomUtil}
+              placeholder="Choisissez un nom d'utilisateur"
               autoCapitalize="none"
               autoCorrect={false}
               leftIcon={personIcon}
@@ -135,10 +160,13 @@ export function RegisterScreen() {
             />
           </View>
 
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+
           <Button
-            title="Créer mon compte"
+            title={loading ? 'Création...' : 'Créer mon compte'}
             variant="brand"
             onPress={handleRegister}
+            disabled={loading}
             rightIcon={<Ionicons name="chevron-forward" size={18} color={colors.white} />}
           />
 
@@ -192,6 +220,7 @@ const styles = StyleSheet.create({
   },
   modeRow: { flexDirection: 'row', gap: spacing.md },
   form: { gap: spacing.md, marginTop: spacing.sm },
+  error: { color: 'red', fontSize: fontSize.sm, textAlign: 'center' },
   divider: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   line: {
     flex: 1,

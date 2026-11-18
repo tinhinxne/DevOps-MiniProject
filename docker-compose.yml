@@ -1,0 +1,33 @@
+services:
+  db:
+    image: postgres:16
+    container_name: medtrack-db
+    environment:
+      POSTGRES_DB: medtrack
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/schema_postgresql.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d medtrack"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: ./backend
+    container_name: medtrack-backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${DB_USER}:${DB_PASSWORD}@db:5432/medtrack
+      PORT: 3000
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:
