@@ -2,6 +2,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
+import { useAuth } from '../auth/AuthContext';
+import { login } from '../../utils/api';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -20,18 +22,32 @@ type Mode = 'patient' | 'aidant';
 export function LoginScreen() {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>('aidant');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  const [identifiant, setIdentifiant] = useState('');
+const [password, setPassword] = useState('');
+const [showPassword, setShowPassword] = useState(false);
+const [loading, setLoading] = useState(false);
+const [error, setError] = useState('');
+const { signIn } = useAuth();
 
- const handleLogin = () => {
-  // TODO: brancher la vraie connexion quand elle existera
-  if (mode === 'aidant') {
-    router.replace('/patient-suivi'); // proche → choisir le patient suivi
-  } else {
-    router.replace('/(tabs)'); // "Ma santé" → accueil direct
+const handleLogin = async () => {
+  if (loading) return;
+  setError('');
+  if (!identifiant.trim() || !password) {
+    setError('Renseignez votre identifiant et votre mot de passe.');
+    return;
+  }
+  setLoading(true);
+  try {
+    const data = await login(identifiant.trim(), password);
+    await signIn(data);
+    router.replace(mode === 'aidant' ? '/patient-suivi' : '/(tabs)');
+  } catch (e: any) {
+    setError(e.message || 'Impossible de contacter le serveur.');
+  } finally {
+    setLoading(false);
   }
 };
+
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -80,17 +96,16 @@ export function LoginScreen() {
           </View>
 
           <View style={styles.form}>
-            <Input
-              label="Nom d'utilisateur"
-              labelColor={colors.textSoft}
-              value={email}
-              onChangeText={setEmail}
-              placeholder="nom@exemple.fr"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              leftIcon={<Ionicons name="mail-outline" size={20} color={colors.textMuted} />}
-            />
+          <Input
+  label="E-mail ou nom d'utilisateur"
+  labelColor={colors.textSoft}
+  value={identifiant}
+  onChangeText={setIdentifiant}
+  placeholder="nom@exemple.fr ou sosodev"
+  autoCapitalize="none"
+  autoCorrect={false}
+  leftIcon={<Ionicons name="person-outline" size={20} color={colors.textMuted} />}
+/>
             <Input
               label="Mot de passe"
               labelColor={colors.textSoft}
@@ -127,12 +142,15 @@ export function LoginScreen() {
             <Text style={styles.forgotText}>Mot de passe oublié ?</Text>
           </Pressable>
 
-          <Button
-            title="Se connecter"
-            variant="brand"
-            onPress={handleLogin}
-            rightIcon={<Ionicons name="chevron-forward" size={18} color={colors.white} />}
-          />
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+
+<Button
+  title={loading ? 'Connexion...' : 'Se connecter'}
+  variant="brand"
+  onPress={handleLogin}
+  disabled={loading}
+  rightIcon={<Ionicons name="chevron-forward" size={18} color={colors.white} />}
+/>
 
           <View style={styles.divider}>
             <View style={styles.line} />
@@ -157,6 +175,7 @@ export function LoginScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.authBackground },
+  error: { color: 'red', fontSize: fontSize.sm, textAlign: 'center' },
   flex: { flex: 1 },
   content: { padding: spacing.lg, gap: spacing.md },
   titleRow: {

@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
+import { useAuth } from '../auth/AuthContext';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -27,6 +28,7 @@ export function RegisterScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const { signIn } = useAuth();
 
   const handleRegister = async () => {
     if (loading) return;
@@ -43,8 +45,9 @@ export function RegisterScreen() {
 
     setLoading(true);
     try {
-      await register(nomUtil.trim(), prenom.trim(), email.trim(), password);
-      router.replace('/login'); // '/(tabs)' une fois le login JWT en place
+     const data = await register(nomUtil.trim(), prenom.trim(), email.trim(), password);
+await signIn(data);          // sauvegarde le token + l'utilisateur
+router.replace('/(tabs)');   // va au dashboard
     } catch (e: any) {
       setError(e.message || 'Impossible de contacter le serveur.');
     } finally {
