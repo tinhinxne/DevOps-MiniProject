@@ -1,8 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-
 import {
   KeyboardAvoidingView,
   Platform,
@@ -33,7 +31,6 @@ export function RegisterScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const { signIn } = useAuth();
 
   // Compte déjà mémorisé sur ce téléphone -> proposé pour ajouter un 2e espace
   const [saved, setSaved] = useState<SavedAccount | null>(null);
@@ -93,7 +90,6 @@ const quick = useSaved && !!saved && !needPassword;
 
     setLoading(true);
     try {
-
       const data =
         useSaved && saved
           ? await register('', saved.prenom ?? '', saved.email, password, mode)
@@ -107,7 +103,6 @@ const quick = useSaved && !!saved && !needPassword;
 
       // Proche -> choix des patients suivis (skippable) ; Ma santé -> accueil
       router.replace(mode === 'aidant' ? '/patient-suivi' : '/(tabs)');
-
     } catch (e: any) {
       setError(e.message || 'Impossible de contacter le serveur.');
     } finally {
