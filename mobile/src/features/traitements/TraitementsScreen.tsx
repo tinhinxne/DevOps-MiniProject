@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import {
   Alert,
   Image,
@@ -46,10 +46,7 @@ export function TraitementsScreen() {
   const anciennes = liste.filter(
     (o) => o.statut === 'ancienne' && `ordonnance du ${o.delivreeLe}`.includes(q),
   );
-  const meds = useMemo(
-    () => medicaments.filter((m) => m.nom.toLowerCase().includes(q)),
-    [q],
-  );
+  const meds = medicaments.filter((m) => m.nom.toLowerCase().includes(q));
   const stockFaible = medicaments.find((m) => m.stock !== undefined && m.stock < 5);
   const detail = liste.find((o) => o.id === detailId);
 
@@ -57,7 +54,8 @@ const ajouter = () =>
   router.push({
     pathname: '/configurer-prise',
     params: { nom: 'Doliprane', dosage: '500 mg', dci: 'paracétamol', forme: 'comprimé' },
-  } as unknown as Href);  const ouvrirMed = (id: string) =>
+  } as unknown as Href);  
+  const ouvrirMed = (id: string) =>
     router.push({ pathname: '/detail-medicament', params: { id } } as unknown as Href);
 
   const scanner = async () => {
@@ -129,7 +127,7 @@ const ajouter = () =>
   <Text style={styles.body}>Délivrée le {active.delivreeLe}</Text>
   <View style={[styles.badge, { backgroundColor: colors.tintBlue, alignSelf: 'flex-start' }]}>
     <Text style={[styles.badgeText, { color: colors.brandDeep }]}>
-      Valable jusqu'au : {active.expireLe}
+      Valable jusqu&apos;au : {active.expireLe}
     </Text>
   </View>
   <ExpirationBadge expireLe={active.expireLe} />
