@@ -1,7 +1,6 @@
-
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -14,8 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BrandHeader, Button, Input, ModeCard } from '../../components';
 import { colors, fontSize, radius, spacing } from '../../theme';
-
-type Mode = 'patient' | 'aidant';
+import { forgetAccount, getSavedAccount, login, saveAccount, type Mode } from '../../utils/api';
 
 export function LoginScreen() {
   const router = useRouter();
@@ -23,15 +21,51 @@ export function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [remember, setRemember] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [roleManquant, setRoleManquant] = useState(false);
 
- const handleLogin = () => {
-  // TODO: brancher la vraie connexion quand elle existera
-  if (mode === 'aidant') {
-    router.replace('/patient-suivi'); // proche → choisir le patient suivi
-  } else {
-    router.replace('/(tabs)'); // "Ma santé" → accueil direct
-  }
-};
+  // Pré-remplir l'identifiant mémorisé
+  useEffect(() => {
+    getSavedAccount().then((acc) => {
+      if (acc) setEmail(acc.email);
+    });
+  }, []);
+
+  const handleLogin = async () => {
+    if (loading) return;
+    setError('');
+    setRoleManquant(false);
+
+    if (!email.trim() || !password) {
+      setError('Identifiant et mot de passe requis.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { user } = await login(email.trim(), password, mode);
+
+      if (remember) await saveAccount({ email: user.email, prenom: user.prenom });
+      else await forgetAccount();
+
+      router.replace(mode === 'aidant' ? '/patient-suivi' : '/(tabs)');
+    } catch (e: any) {
+      if (e.code === 'ROLE_MANQUANT') {
+        setRoleManquant(true);
+        setError(
+          mode === 'aidant'
+            ? "Vous n'avez pas encore d'espace « Un proche » avec ces identifiants."
+            : "Vous n'avez pas encore d'espace « Ma santé » avec ces identifiants."
+        );
+      } else {
+        setError(e.message || 'Connexion impossible.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -81,7 +115,7 @@ export function LoginScreen() {
 
           <View style={styles.form}>
             <Input
-              label="Nom d'utilisateur"
+              label="E-mail ou nom d'utilisateur"
               labelColor={colors.textSoft}
               value={email}
               onChangeText={setEmail}
@@ -118,19 +152,40 @@ export function LoginScreen() {
             />
           </View>
 
-          <Pressable
-            style={styles.forgot}
-            onPress={() => {
-              // TODO: page « mot de passe oublié »
-            }}
-          >
-            <Text style={styles.forgotText}>Mot de passe oublié ?</Text>
-          </Pressable>
+          <View style={styles.optionsRow}>
+            <Pressable style={styles.rememberRow} onPress={() => setRemember((v) => !v)}>
+              <Ionicons
+                name={remember ? 'checkbox' : 'square-outline'}
+                size={20}
+                color={colors.brand}
+              />
+              <Text style={styles.rememberText}>Mémoriser mon identifiant</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => {
+                // TODO: page « mot de passe oublié »
+              }}
+            >
+              <Text style={styles.forgotText}>Mot de passe oublié ?</Text>
+            </Pressable>
+          </View>
+
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+
+          {roleManquant && (
+            <Button
+              title="Créer cet espace maintenant"
+              variant="light"
+              onPress={() => router.push({ pathname: '/register', params: { mode } })}
+            />
+          )}
 
           <Button
-            title="Se connecter"
+            title={loading ? 'Connexion...' : 'Se connecter'}
             variant="brand"
             onPress={handleLogin}
+            disabled={loading}
             rightIcon={<Ionicons name="chevron-forward" size={18} color={colors.white} />}
           />
 
@@ -143,7 +198,7 @@ export function LoginScreen() {
           <Button
             title="Nouveau sur Maw3idi ? S'inscrire"
             variant="light"
-            onPress={() => router.push('/register')}
+            onPress={() => router.push({ pathname: '/register', params: { mode } })}
           />
 
           <Text style={styles.footer}>
@@ -184,8 +239,15 @@ const styles = StyleSheet.create({
   },
   modeRow: { flexDirection: 'row', gap: spacing.md },
   form: { gap: spacing.md, marginTop: spacing.sm },
-  forgot: { alignSelf: 'flex-end' },
+  optionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  rememberRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  rememberText: { fontSize: fontSize.sm, color: colors.textSoft },
   forgotText: { fontSize: fontSize.sm, fontWeight: '700', color: colors.brand },
+  error: { color: 'red', fontSize: fontSize.sm, textAlign: 'center' },
   divider: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   line: {
     flex: 1,

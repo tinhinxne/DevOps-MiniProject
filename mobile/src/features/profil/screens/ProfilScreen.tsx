@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { Alert, Platform, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 
 import { colors, spacing } from '@/theme';
+
 
 import { AppHeader } from '../../../components/AppHeader';
 import { LogoutButton } from '../../../components/LogoutButton';
@@ -23,10 +24,26 @@ export default function ProfilScreen() {
   const [appointmentReminder, setAppointmentReminder] = useState(false);
 
   const isAidant = mode === 'aidant';
+  
 
   // Aidant : on choisit d'abord la personne suivie, puis on ouvre l'écran voulu
   const pickPerson = (target: 'medical' | 'rapport') =>
     router.push({ pathname: '/profil-choisir-personne', params: { target } } as unknown as Href);
+const doLogout = () => {
+  // TODO : vider la session (token, AsyncStorage, supabase.auth.signOut()...)
+  router.replace('/login' as Href); // adapte selon le fichier dans (auth)
+};
+
+const onLogout = () => {
+  if (Platform.OS === 'web') {
+    if (window.confirm('Voulez-vous vraiment vous déconnecter ?')) doLogout();
+    return;
+  }
+  Alert.alert('Se déconnecter', 'Voulez-vous vraiment vous déconnecter ?', [
+    { text: 'Annuler', style: 'cancel' },
+    { text: 'Se déconnecter', style: 'destructive', onPress: doLogout },
+  ]);
+};
 
   const reminderSwitch = (
     <Switch
@@ -150,7 +167,7 @@ export default function ProfilScreen() {
       )}
 
       <View style={styles.logout}>
-        <LogoutButton />
+       <LogoutButton onPress={onLogout} />
       </View>
     </ScrollView>
   );

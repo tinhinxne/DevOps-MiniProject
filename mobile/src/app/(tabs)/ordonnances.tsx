@@ -1,5 +1,5 @@
-import { PlaceholderScreen } from '../../components';
+import { TraitementsScreen } from '../../features/traitements/TraitementsScreen';
 
 export default function Screen() {
-  return <PlaceholderScreen title="Traitements" />;
+  return <TraitementsScreen />;
 }

@@ -22,6 +22,15 @@ CREATE TABLE utilisateur (
     prenom      TEXT NOT NULL,
     email       TEXT NOT NULL UNIQUE
 );
+CREATE TYPE role_utilisateur AS ENUM ('PATIENT', 'AIDANT');
+
+-- Section 2, juste après CREATE TABLE utilisateur (...)
+CREATE TABLE utilisateur_role (
+    utilisateur_id UUID NOT NULL REFERENCES utilisateur(id) ON DELETE CASCADE,
+    role           role_utilisateur NOT NULL,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (utilisateur_id, role)
+);
 
 CREATE TABLE parametre_notif (
     utilisateur_id    TEXT PRIMARY KEY REFERENCES utilisateur(id) ON DELETE CASCADE,

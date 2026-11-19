@@ -41,7 +41,16 @@ CREATE TABLE parametre_notif (
     seuil_oublis      INT              CHECK (seuil_oublis > 0),   -- NULL = pas d'alerte aux proches
     partage_proches   BOOLEAN NOT NULL DEFAULT FALSE
 );
+-- Section 1 (énumérations)
+CREATE TYPE role_utilisateur AS ENUM ('PATIENT', 'AIDANT');
 
+-- Section 2, juste après CREATE TABLE utilisateur (...)
+CREATE TABLE utilisateur_role (
+    utilisateur_id UUID NOT NULL REFERENCES utilisateur(id) ON DELETE CASCADE,
+    role           role_utilisateur NOT NULL,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (utilisateur_id, role)
+);
 -- Utilisateur 0..1 — 0..1 Patient : utilisateur_id est NULL pour un patient créé par un aidant
 CREATE TABLE patient (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
