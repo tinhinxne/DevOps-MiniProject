@@ -1,9 +1,6 @@
-
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
-import { useAuth } from '../auth/AuthContext';
-import { login } from '../../utils/api';
+import { useEffect, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -16,38 +13,59 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BrandHeader, Button, Input, ModeCard } from '../../components';
 import { colors, fontSize, radius, spacing } from '../../theme';
-
-type Mode = 'patient' | 'aidant';
+import { forgetAccount, getSavedAccount, login, saveAccount, type Mode } from '../../utils/api';
 
 export function LoginScreen() {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>('aidant');
-  const [identifiant, setIdentifiant] = useState('');
-const [password, setPassword] = useState('');
-const [showPassword, setShowPassword] = useState(false);
-const [loading, setLoading] = useState(false);
-const [error, setError] = useState('');
-const { signIn } = useAuth();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [remember, setRemember] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [roleManquant, setRoleManquant] = useState(false);
 
-const handleLogin = async () => {
-  if (loading) return;
-  setError('');
-  if (!identifiant.trim() || !password) {
-    setError('Renseignez votre identifiant et votre mot de passe.');
-    return;
-  }
-  setLoading(true);
-  try {
-    const data = await login(identifiant.trim(), password);
-    await signIn(data);
-    router.replace(mode === 'aidant' ? '/patient-suivi' : '/(tabs)');
-  } catch (e: any) {
-    setError(e.message || 'Impossible de contacter le serveur.');
-  } finally {
-    setLoading(false);
-  }
-};
+  // Pré-remplir l'identifiant mémorisé
+  useEffect(() => {
+    getSavedAccount().then((acc) => {
+      if (acc) setEmail(acc.email);
+    });
+  }, []);
 
+  const handleLogin = async () => {
+    if (loading) return;
+    setError('');
+    setRoleManquant(false);
+
+    if (!email.trim() || !password) {
+      setError('Identifiant et mot de passe requis.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { user } = await login(email.trim(), password, mode);
+
+      if (remember) await saveAccount({ email: user.email, prenom: user.prenom });
+      else await forgetAccount();
+
+      router.replace(mode === 'aidant' ? '/patient-suivi' : '/(tabs)');
+    } catch (e: any) {
+      if (e.code === 'ROLE_MANQUANT') {
+        setRoleManquant(true);
+        setError(
+          mode === 'aidant'
+            ? "Vous n'avez pas encore d'espace « Un proche » avec ces identifiants."
+            : "Vous n'avez pas encore d'espace « Ma santé » avec ces identifiants."
+        );
+      } else {
+        setError(e.message || 'Connexion impossible.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -96,16 +114,17 @@ const handleLogin = async () => {
           </View>
 
           <View style={styles.form}>
-          <Input
-  label="E-mail ou nom d'utilisateur"
-  labelColor={colors.textSoft}
-  value={identifiant}
-  onChangeText={setIdentifiant}
-  placeholder="nom@exemple.fr ou sosodev"
-  autoCapitalize="none"
-  autoCorrect={false}
-  leftIcon={<Ionicons name="person-outline" size={20} color={colors.textMuted} />}
-/>
+            <Input
+              label="E-mail ou nom d'utilisateur"
+              labelColor={colors.textSoft}
+              value={email}
+              onChangeText={setEmail}
+              placeholder="nom@exemple.fr"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              leftIcon={<Ionicons name="mail-outline" size={20} color={colors.textMuted} />}
+            />
             <Input
               label="Mot de passe"
               labelColor={colors.textSoft}
@@ -133,24 +152,42 @@ const handleLogin = async () => {
             />
           </View>
 
-          <Pressable
-            style={styles.forgot}
-            onPress={() => {
-              // TODO: page « mot de passe oublié »
-            }}
-          >
-            <Text style={styles.forgotText}>Mot de passe oublié ?</Text>
-          </Pressable>
+          <View style={styles.optionsRow}>
+            <Pressable style={styles.rememberRow} onPress={() => setRemember((v) => !v)}>
+              <Ionicons
+                name={remember ? 'checkbox' : 'square-outline'}
+                size={20}
+                color={colors.brand}
+              />
+              <Text style={styles.rememberText}>Mémoriser mon identifiant</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => {
+                // TODO: page « mot de passe oublié »
+              }}
+            >
+              <Text style={styles.forgotText}>Mot de passe oublié ?</Text>
+            </Pressable>
+          </View>
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
-<Button
-  title={loading ? 'Connexion...' : 'Se connecter'}
-  variant="brand"
-  onPress={handleLogin}
-  disabled={loading}
-  rightIcon={<Ionicons name="chevron-forward" size={18} color={colors.white} />}
-/>
+          {roleManquant && (
+            <Button
+              title="Créer cet espace maintenant"
+              variant="light"
+              onPress={() => router.push({ pathname: '/register', params: { mode } })}
+            />
+          )}
+
+          <Button
+            title={loading ? 'Connexion...' : 'Se connecter'}
+            variant="brand"
+            onPress={handleLogin}
+            disabled={loading}
+            rightIcon={<Ionicons name="chevron-forward" size={18} color={colors.white} />}
+          />
 
           <View style={styles.divider}>
             <View style={styles.line} />
@@ -161,7 +198,7 @@ const handleLogin = async () => {
           <Button
             title="Nouveau sur Maw3idi ? S'inscrire"
             variant="light"
-            onPress={() => router.push('/register')}
+            onPress={() => router.push({ pathname: '/register', params: { mode } })}
           />
 
           <Text style={styles.footer}>
@@ -175,7 +212,6 @@ const handleLogin = async () => {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.authBackground },
-  error: { color: 'red', fontSize: fontSize.sm, textAlign: 'center' },
   flex: { flex: 1 },
   content: { padding: spacing.lg, gap: spacing.md },
   titleRow: {
@@ -203,8 +239,15 @@ const styles = StyleSheet.create({
   },
   modeRow: { flexDirection: 'row', gap: spacing.md },
   form: { gap: spacing.md, marginTop: spacing.sm },
-  forgot: { alignSelf: 'flex-end' },
+  optionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  rememberRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  rememberText: { fontSize: fontSize.sm, color: colors.textSoft },
   forgotText: { fontSize: fontSize.sm, fontWeight: '700', color: colors.brand },
+  error: { color: 'red', fontSize: fontSize.sm, textAlign: 'center' },
   divider: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   line: {
     flex: 1,

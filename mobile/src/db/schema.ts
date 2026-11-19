@@ -23,6 +23,15 @@ CREATE TABLE utilisateur (
     email       TEXT NOT NULL UNIQUE
 );
 
+
+-- Section 2, juste après CREATE TABLE utilisateur (...)
+CREATE TABLE utilisateur_role (
+   utilisateur_id TEXT NOT NULL REFERENCES utilisateur(id) ON DELETE CASCADE,
+role           TEXT NOT NULL CHECK (role IN ('PATIENT','AIDANT')),
+created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    PRIMARY KEY (utilisateur_id, role)
+);
+
 CREATE TABLE parametre_notif (
     utilisateur_id    TEXT PRIMARY KEY REFERENCES utilisateur(id) ON DELETE CASCADE,
     rappels_prise     INTEGER NOT NULL DEFAULT 1 CHECK (rappels_prise IN (0,1)),

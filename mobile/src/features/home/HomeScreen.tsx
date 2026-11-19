@@ -5,7 +5,7 @@ import Svg, { Circle, Polyline } from 'react-native-svg';
 import { Card, GradientBox } from '../../components';
 import { colors, fontSize, radius, spacing } from '../../theme';
 import { useRouter } from 'expo-router';
-
+import { useState } from 'react';
 // ---- Données de démo (à remplacer par la vraie source plus tard) ----
 type Med = {
   id: string;
@@ -25,8 +25,32 @@ const MEDS: Med[] = [
   { id: '3', letter: 'A', name: 'Atorvastatine', dose: '20 mg · 1 comprimé', time: '20:00', bg: '#EDE9FE', fg: '#7C3AED', next: true },
 ];
 
-const CONFIRMED = [55, 60, 58, 72, 80, 92];
-const TOTAL = [70, 70, 72, 75, 78, 80];
+type Period = 'week' | 'month';
+type Stats = {
+  label: string;
+  correct: number;
+  missed: number;
+  postponed: number;
+  confirmed: number[];
+  total: number[];
+};
+
+const STATS: Record<Period, Stats> = {
+  week: {
+    label: 'Cette semaine',
+    correct: 23, missed: 2, postponed: 0,
+    confirmed: [55, 60, 58, 72, 80, 92],
+    total: [70, 70, 72, 75, 78, 80],
+  },
+  month: {
+    label: 'Ce mois',
+    correct: 92, missed: 8, postponed: 2,
+    confirmed: [62, 70, 66, 78, 85, 90],
+    total: [75, 76, 78, 80, 82, 85],
+  },
+};
+
+const STREAK_DAYS = 7;
 
 // ---- Petits composants internes ----
 function Donut({ value }: { value: number }) {
@@ -141,6 +165,10 @@ function MedItem({ med }: { med: Med }) {
 // ---- Écran ----
 export function HomeScreen() {
   const router = useRouter();
+  const [period, setPeriod] = useState<Period>('week');
+const [pickerOpen, setPickerOpen] = useState(false);
+const s = STATS[period];
+const rate = Math.round((s.correct / (s.correct + s.missed + s.postponed)) * 100);
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -181,36 +209,69 @@ export function HomeScreen() {
           </View>
         </GradientBox>
 
-        {/* Observance */}
-        <Card style={styles.card}>
-          <View style={styles.obsHeader}>
-            <View style={styles.obsTitleRow}>
-              <View style={styles.smallIcon}>
-                <Ionicons name="stats-chart-outline" size={14} color={colors.brand} />
-              </View>
-              <Text style={styles.cardTitle}>Mon observance</Text>
-            </View>
-            <Text style={styles.period}>Cette semaine ▾</Text>
-          </View>
-          <View style={styles.obsBody}>
-            <View style={styles.donutCol}>
-              <Donut value={92} />
-              <Text style={styles.donutCaption}>Très bien !</Text>
-            </View>
-            <View style={styles.flex}>
-              <View style={styles.legend}>
-                <View style={[styles.legendDot, { backgroundColor: colors.success }]} />
-                <Text style={styles.legendText}>Prises confirmées</Text>
-                <View style={[styles.legendDot, { backgroundColor: colors.border }]} />
-                <Text style={styles.legendText}>Total</Text>
-              </View>
-              <Svg width={150} height={56}>
-                <Sparkline data={TOTAL} color={colors.border} dashed />
-                <Sparkline data={CONFIRMED} color={colors.success} />
-              </Svg>
-            </View>
-          </View>
-        </Card>
+     {/* Observance */}
+<Card style={styles.card}>
+  <View style={styles.obsHeader}>
+    <View style={styles.obsTitleRow}>
+      <View style={styles.smallIcon}>
+        <Ionicons name="stats-chart-outline" size={14} color={colors.brand} />
+      </View>
+      <Text style={styles.cardTitle}>Mon observance</Text>
+    </View>
+    <Pressable hitSlop={8} onPress={() => setPickerOpen((o) => !o)}>
+      <Text style={styles.period}>{s.label} {pickerOpen ? '▴' : '▾'}</Text>
+    </Pressable>
+  </View>
+
+  {pickerOpen && (
+    <View style={styles.periodRow}>
+      {(Object.keys(STATS) as Period[]).map((p) => (
+        <Pressable
+          key={p}
+          onPress={() => { setPeriod(p); setPickerOpen(false); }}
+          style={[styles.periodChip, p === period && styles.periodChipActive]}
+        >
+          <Text style={[styles.periodChipText, p === period && styles.periodChipTextActive]}>
+            {STATS[p].label}
+          </Text>
+        </Pressable>
+      ))}
+    </View>
+  )}
+
+  <View style={styles.obsBody}>
+    <View style={styles.donutCol}>
+      <Donut value={rate} />
+      <View style={styles.streak}>
+        <Ionicons name="flame" size={12} color={colors.warning} />
+        <Text style={styles.streakText}>Série : {STREAK_DAYS} jours sans oubli</Text>
+      </View>
+    </View>
+    <View style={styles.flex}>
+      <View style={styles.legend}>
+        <View style={[styles.legendDot, { backgroundColor: colors.success }]} />
+        <Text style={styles.legendText}>Prises confirmées</Text>
+        <View style={[styles.legendDot, { backgroundColor: colors.border }]} />
+        <Text style={styles.legendText}>Total</Text>
+      </View>
+      <Svg width={150} height={56}>
+        <Sparkline data={s.total} color={colors.border} dashed />
+        <Sparkline data={s.confirmed} color={colors.success} />
+      </Svg>
+      <View style={styles.counters}>
+        <Text style={[styles.counter, { color: colors.success }]}>
+          {s.correct} correcte{s.correct > 1 ? 's' : ''}
+        </Text>
+        <Text style={[styles.counter, { color: colors.danger }]}>
+          {s.missed} oubli{s.missed > 1 ? 's' : ''}
+        </Text>
+        <Text style={[styles.counter, { color: colors.textSoft }]}>
+          {s.postponed} reportée{s.postponed > 1 ? 's' : ''}
+        </Text>
+      </View>
+    </View>
+  </View>
+</Card>
 
                 {/* Prochain rendez-vous */}
         <SectionHeader
@@ -288,6 +349,18 @@ const styles = StyleSheet.create({
   donut: { width: 84, height: 84, alignItems: 'center', justifyContent: 'center' },
   donutText: { position: 'absolute', fontSize: fontSize.lg, fontWeight: '800', color: colors.text },
   donutCaption: { fontSize: 11, fontWeight: '600', color: colors.success },
+  streak: { flexDirection: 'row', alignItems: 'center', gap: 4, maxWidth: 110 },
+streakText: { fontSize: 11, fontWeight: '600', color: colors.success, textAlign: 'center' },
+periodRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
+periodChip: {
+  paddingHorizontal: spacing.md, paddingVertical: 6,
+  borderRadius: radius.pill, backgroundColor: colors.tintBlue,
+},
+periodChipActive: { backgroundColor: colors.brand },
+periodChipText: { fontSize: 12, fontWeight: '600', color: colors.brand },
+periodChipTextActive: { color: colors.white },
+counters: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
+counter: { fontSize: 11, fontWeight: '700' },
   legend: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: spacing.sm, flexWrap: 'wrap' },
   legendDot: { width: 8, height: 8, borderRadius: 4 },
   legendText: { fontSize: 10, color: colors.textSoft, marginRight: spacing.sm },

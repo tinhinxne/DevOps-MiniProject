@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
-import { useAuth } from '../auth/AuthContext';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -14,13 +13,17 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BrandHeader, Button, Input, ModeCard } from '../../components';
 import { colors, fontSize, radius, spacing } from '../../theme';
-import { register } from '../../utils/api';
-
-type Mode = 'patient' | 'aidant';
+import { addSpace, getSavedAccount, register, saveAccount, type Mode, type SavedAccount } from '../../utils/api';
 
 export function RegisterScreen() {
   const router = useRouter();
-  const [mode, setMode] = useState<Mode>('patient');
+  const params = useLocalSearchParams<{ mode?: string }>();
+
+  const [mode, setMode] = useState<Mode>(() => {
+  return params.mode === 'patient' || params.mode === 'aidant'
+    ? params.mode
+    : 'aidant';
+});
   const [prenom, setPrenom] = useState('');
   const [nomUtil, setNomUtil] = useState('');
   const [email, setEmail] = useState('');
@@ -28,26 +31,78 @@ export function RegisterScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const { signIn } = useAuth();
+
+  // Compte déjà mémorisé sur ce téléphone -> proposé pour ajouter un 2e espace
+  const [saved, setSaved] = useState<SavedAccount | null>(null);
+  const [useSaved, setUseSaved] = useState(false);
+const [needPassword, setNeedPassword] = useState(false); // token expiré -> mot de passe demandé
+const quick = useSaved && !!saved && !needPassword;
+ useEffect(() => {
+  getSavedAccount().then((acc) => {
+    if (acc) {
+      setSaved(acc);
+      setUseSaved(true);
+    }
+  });
+}, []);
 
   const handleRegister = async () => {
     if (loading) return;
     setError('');
-
-    if (!prenom.trim() || !nomUtil.trim() || !email.trim() || !password) {
-      setError('Tous les champs sont obligatoires.');
+        if (quick) {
+      setLoading(true);
+      try {
+        const data = await addSpace(mode);
+        await saveAccount({
+          email: data.user.email,
+          prenom: data.user.prenom,
+          nom_util: data.user.nom_util,
+        });
+        router.replace(mode === 'aidant' ? '/patient-suivi' : '/(tabs)');
+      } catch (e: any) {
+        if (e.code === 'TOKEN_INVALIDE') {
+          setNeedPassword(true);
+          setError('Session expirée : entrez votre mot de passe.');
+        } else {
+          setError(e.message || 'Impossible de contacter le serveur.');
+        }
+      } finally {
+        setLoading(false);
+      }
       return;
     }
-    if (password.length < 8) {
-      setError('Le mot de passe doit contenir 8 caractères minimum.');
-      return;
+
+    if (useSaved && saved) {
+      if (!password) {
+        setError('Entrez le mot de passe de ce compte.');
+        return;
+      }
+    } else {
+      if (!prenom.trim() || !nomUtil.trim() || !email.trim() || !password) {
+        setError('Tous les champs sont obligatoires.');
+        return;
+      }
+      if (password.length < 8) {
+        setError('Le mot de passe doit contenir 8 caractères minimum.');
+        return;
+      }
     }
 
     setLoading(true);
     try {
-     const data = await register(nomUtil.trim(), prenom.trim(), email.trim(), password);
-await signIn(data);          // sauvegarde le token + l'utilisateur
-router.replace('/(tabs)');   // va au dashboard
+      const data =
+        useSaved && saved
+          ? await register('', saved.prenom ?? '', saved.email, password, mode)
+          : await register(nomUtil.trim(), prenom.trim(), email.trim(), password, mode);
+
+     await saveAccount({
+      email: data.user.email,
+        prenom: data.user.prenom,
+        nom_util: data.user.nom_util,
+      });
+
+      // Proche -> choix des patients suivis (skippable) ; Ma santé -> accueil
+      router.replace(mode === 'aidant' ? '/patient-suivi' : '/(tabs)');
     } catch (e: any) {
       setError(e.message || 'Impossible de contacter le serveur.');
     } finally {
@@ -80,10 +135,10 @@ router.replace('/(tabs)');   // va au dashboard
           </View>
 
           <Text style={styles.subtitle}>
-            Choisissez comment vous souhaitez utiliser Mawdi3i.
+            Choisissez comment vous souhaitez utiliser Maw3idi.
           </Text>
 
-          <Text style={styles.sectionLabel}>{"J'utilise Mawdi3i pour"}</Text>
+          <Text style={styles.sectionLabel}>{"J'utilise Maw3idi pour"}</Text>
           <View style={styles.modeRow}>
             <ModeCard
               title="Ma santé"
@@ -103,42 +158,64 @@ router.replace('/(tabs)');   // va au dashboard
             />
           </View>
 
+          {saved && (
+            <View style={styles.savedBox}>
+              <Text style={styles.savedText}>
+                {useSaved
+                  
+                  ? `Continuer avec le compte @${saved.nom_util ?? saved.email}`
+                  : 'Un compte est mémorisé sur ce téléphone'}
+              </Text>
+              <Pressable onPress={() => setUseSaved((v) => !v)} hitSlop={8}>
+                <Text style={styles.savedLink}>
+                  {useSaved ? 'Utiliser un autre compte' : 'Utiliser ce compte'}
+                </Text>
+              </Pressable>
+            </View>
+          )}
+
           <View style={styles.form}>
+            {!(useSaved && saved) && (
+              <>
+                <Input
+                  label="Prénom"
+                  labelColor={colors.textSoft}
+                  value={prenom}
+                  onChangeText={setPrenom}
+                  placeholder="Votre prénom"
+                  leftIcon={personIcon}
+                />
+                <Input
+                  label="Nom d'utilisateur"
+                  labelColor={colors.textSoft}
+                  value={nomUtil}
+                  onChangeText={setNomUtil}
+                  placeholder="Choisissez un nom d'utilisateur"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  leftIcon={personIcon}
+                />
+                <Input
+                  label="Adresse e-mail"
+                  labelColor={colors.textSoft}
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder="nom@exemple.fr"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  leftIcon={<Ionicons name="mail-outline" size={20} color={colors.textMuted} />}
+                />
+              </>
+            )}
+            
+              {!quick && (
             <Input
-              label="Prénom"
-              labelColor={colors.textSoft}
-              value={prenom}
-              onChangeText={setPrenom}
-              placeholder="Votre prénom"
-              leftIcon={personIcon}
-            />
-            <Input
-              label="Nom d'utilisateur"
-              labelColor={colors.textSoft}
-              value={nomUtil}
-              onChangeText={setNomUtil}
-              placeholder="Choisissez un nom d'utilisateur"
-              autoCapitalize="none"
-              autoCorrect={false}
-              leftIcon={personIcon}
-            />
-            <Input
-              label="Adresse e-mail"
-              labelColor={colors.textSoft}
-              value={email}
-              onChangeText={setEmail}
-              placeholder="nom@exemple.fr"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              leftIcon={<Ionicons name="mail-outline" size={20} color={colors.textMuted} />}
-            />
-            <Input
-              label="Mot de passe"
+             label="Mot de passe"
               labelColor={colors.textSoft}
               value={password}
               onChangeText={setPassword}
-              placeholder="8 caractères minimum"
+              placeholder={useSaved && saved ? 'Mot de passe de ce compte' : '8 caractères minimum'}
               secureTextEntry={!showPassword}
               autoCapitalize="none"
               leftIcon={<Ionicons name="lock-closed-outline" size={20} color={colors.textMuted} />}
@@ -158,12 +235,14 @@ router.replace('/(tabs)');   // va au dashboard
                 </Pressable>
               }
             />
+             
+            )}
           </View>
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
           <Button
-            title={loading ? 'Création...' : 'Créer mon compte'}
+            title={loading ? 'Création...' : quick ? 'Continuer' : 'Créer mon compte'}
             variant="brand"
             onPress={handleRegister}
             disabled={loading}
@@ -219,6 +298,14 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   modeRow: { flexDirection: 'row', gap: spacing.md },
+  savedBox: {
+    gap: spacing.xs,
+    padding: spacing.md,
+    borderRadius: radius.pill,
+    backgroundColor: colors.tintBlue,
+  },
+  savedText: { fontSize: fontSize.sm, color: colors.text, fontWeight: '600' },
+  savedLink: { fontSize: fontSize.sm, color: colors.brand, fontWeight: '700' },
   form: { gap: spacing.md, marginTop: spacing.sm },
   error: { color: 'red', fontSize: fontSize.sm, textAlign: 'center' },
   divider: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },

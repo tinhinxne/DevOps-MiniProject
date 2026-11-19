@@ -17,6 +17,7 @@ import { colors, spacing } from '@/theme';
 import { SubPageHeader } from '../../../components/SubPageHeader';
 
 import { mockFollowed } from '../data/mockProfile';
+import { useDoctors } from '../hooks/useDoctors';
 
 const BORDER = '#D6E6F5';
 const FIELD_BG = '#F4F8FD';
@@ -56,6 +57,20 @@ export default function MedicalProfileScreen() {
   // Mode aidant : personId est fourni. Mode patient : il est absent.
   const { personId } = useLocalSearchParams<{ personId?: string }>();
   const person = mockFollowed.find((p) => p.id === personId);
+
+  // Médecins (store partagé entre les écrans)
+  const { doctors, add, remove } = useDoctors(personId);
+  const [adding, setAdding] = useState(false);
+  const [docName, setDocName] = useState('');
+  const [docSpec, setDocSpec] = useState('');
+
+  const addDoctor = () => {
+    if (!docName.trim()) return;
+    add(docName.trim(), docSpec.trim());
+    setDocName('');
+    setDocSpec('');
+    setAdding(false);
+  };
 
   // TODO : initialiser avec les données de useProfile() (ou de la personne suivie) puis envoyer à l'API dans onSave
   const [selected, setSelected] = useState<string[]>([]);
@@ -143,6 +158,71 @@ export default function MedicalProfileScreen() {
             placeholder="Ex. pénicilline"
             placeholderTextColor="#94A3B8"
           />
+        </View>
+
+        {/* Mes médecins */}
+        <SectionTitle>{person ? 'SES MÉDECINS' : 'MES MÉDECINS'}</SectionTitle>
+        <View style={styles.card}>
+          {doctors.length === 0 && !adding && (
+            <Text style={styles.hint}>Aucun médecin ajouté pour le moment.</Text>
+          )}
+
+          {doctors.map((d, i) => (
+            <View key={d.id} style={[styles.docRow, i > 0 && styles.docRowBorder]}>
+              <View style={styles.docIcon}>
+                <Ionicons name="medkit-outline" size={16} color={colors.logoBlue} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.docName}>{d.name}</Text>
+                {d.specialty ? <Text style={styles.docSpec}>{d.specialty}</Text> : null}
+              </View>
+              <Pressable
+                hitSlop={8}
+                onPress={() => remove(d.id)}
+                accessibilityLabel="Supprimer ce médecin">
+                <Ionicons name="trash-outline" size={18} color="#DC2626" />
+              </Pressable>
+            </View>
+          ))}
+
+          {adding && (
+            <View style={styles.docForm}>
+              <TextInput
+                style={styles.input}
+                value={docName}
+                onChangeText={setDocName}
+                placeholder="Nom du médecin"
+                placeholderTextColor="#94A3B8"
+              />
+              <TextInput
+                style={styles.input}
+                value={docSpec}
+                onChangeText={setDocSpec}
+                placeholder="Spécialité (ex. Cardiologue)"
+                placeholderTextColor="#94A3B8"
+              />
+              <View style={styles.docActions}>
+                <Pressable style={styles.docCancel} onPress={() => setAdding(false)}>
+                  <Text style={styles.docCancelText}>Annuler</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.docSave, !docName.trim() && { opacity: 0.5 }]}
+                  onPress={addDoctor}
+                  disabled={!docName.trim()}>
+                  <Text style={styles.docSaveText}>Ajouter</Text>
+                </Pressable>
+              </View>
+            </View>
+          )}
+
+          {!adding && (
+            <Pressable
+              style={styles.addDocBtn}
+              onPress={() => setAdding(true)}
+              accessibilityRole="button">
+              <Text style={styles.addDocText}>+ Ajouter un médecin</Text>
+            </Pressable>
+          )}
         </View>
 
         {/* Habitudes */}
@@ -253,6 +333,48 @@ const styles = StyleSheet.create({
   habits: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   habit: { width: '30%', flexGrow: 1, gap: 6 },
   timeInput: { textAlign: 'center' },
+
+  docRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 },
+  docRowBorder: { borderTopWidth: 1, borderTopColor: BORDER },
+  docIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: '#EAF4FC',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  docName: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
+  docSpec: { fontSize: 12, color: '#64748B', marginTop: 2 },
+  docForm: { gap: 10, marginTop: 4 },
+  docActions: { flexDirection: 'row', gap: 10 },
+  docCancel: {
+    flex: 1,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: '#EAF4FC',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  docCancelText: { fontSize: 13, fontWeight: '600', color: colors.logoBlue },
+  docSave: {
+    flex: 1,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: colors.logoBlue,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  docSaveText: { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
+  addDocBtn: {
+    marginTop: 8,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#EAF4FC',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addDocText: { fontSize: 14, fontWeight: '700', color: colors.logoBlue },
 
   saveBtn: {
     marginTop: spacing.md,
