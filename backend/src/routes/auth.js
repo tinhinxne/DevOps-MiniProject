@@ -141,5 +141,47 @@ router.post('/login', async (req, res) => {
     return fail(res, 500, 'ERREUR_SERVEUR', 'Erreur serveur');
   }
 });
+// POST /auth/add-role  (Authorization: Bearer <token>)  { role }
+// Utilisateur déjà connecté : ajoute l'espace manquant sans mot de passe.
+router.post('/add-role', async (req, res) => {
+  const { role } = req.body || {};
+  if (!ROLES.includes(role)) return fail(res, 400, 'ROLE_INVALIDE', 'Rôle invalide');
+
+  let userId;
+  try {
+    const token = (req.headers.authorization || '').replace(/^Bearer /, '');
+    userId = jwt.verify(token, process.env.JWT_SECRET).sub;
+  } catch {
+    return fail(res, 401, 'TOKEN_INVALIDE', 'Session expirée');
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query('SELECT * FROM utilisateur WHERE id = $1', [userId]);
+    const user = rows[0];
+    if (!user) {
+      await client.query('ROLLBACK');
+      return fail(res, 401, 'TOKEN_INVALIDE', 'Session expirée');
+    }
+    const has = await client.query(
+      'SELECT 1 FROM utilisateur_role WHERE utilisateur_id = $1 AND role = $2',
+      [user.id, role]
+    );
+    if (has.rowCount > 0) {
+      await client.query('ROLLBACK');
+      return fail(res, 409, 'ROLE_DEJA_EXISTANT', 'Cet espace existe déjà : connectez-vous');
+    }
+    await addRole(client, user, role);
+    await client.query('COMMIT');
+    return res.status(201).json({ token: signToken(user.id), user: publicUser(user), role });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('add-role error:', err.message);
+    return fail(res, 500, 'ERREUR_SERVEUR', 'Erreur serveur');
+  } finally {
+    client.release();
+  }
+});
 
 module.exports = router;

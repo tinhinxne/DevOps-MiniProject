@@ -13,7 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BrandHeader, Button, Input, ModeCard } from '../../components';
 import { colors, fontSize, radius, spacing } from '../../theme';
-import { getSavedAccount, register, saveAccount, type Mode, type SavedAccount } from '../../utils/api';
+import { addSpace, getSavedAccount, register, saveAccount, type Mode, type SavedAccount } from '../../utils/api';
 
 export function RegisterScreen() {
   const router = useRouter();
@@ -35,7 +35,8 @@ export function RegisterScreen() {
   // Compte déjà mémorisé sur ce téléphone -> proposé pour ajouter un 2e espace
   const [saved, setSaved] = useState<SavedAccount | null>(null);
   const [useSaved, setUseSaved] = useState(false);
-
+const [needPassword, setNeedPassword] = useState(false); // token expiré -> mot de passe demandé
+const quick = useSaved && !!saved && !needPassword;
  useEffect(() => {
   getSavedAccount().then((acc) => {
     if (acc) {
@@ -48,6 +49,28 @@ export function RegisterScreen() {
   const handleRegister = async () => {
     if (loading) return;
     setError('');
+        if (quick) {
+      setLoading(true);
+      try {
+        const data = await addSpace(mode);
+        await saveAccount({
+          email: data.user.email,
+          prenom: data.user.prenom,
+          nom_util: data.user.nom_util,
+        });
+        router.replace(mode === 'aidant' ? '/patient-suivi' : '/(tabs)');
+      } catch (e: any) {
+        if (e.code === 'TOKEN_INVALIDE') {
+          setNeedPassword(true);
+          setError('Session expirée : entrez votre mot de passe.');
+        } else {
+          setError(e.message || 'Impossible de contacter le serveur.');
+        }
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
 
     if (useSaved && saved) {
       if (!password) {
@@ -72,7 +95,11 @@ export function RegisterScreen() {
           ? await register('', saved.prenom ?? '', saved.email, password, mode)
           : await register(nomUtil.trim(), prenom.trim(), email.trim(), password, mode);
 
-      await saveAccount({ email: data.user.email, prenom: data.user.prenom });
+     await saveAccount({
+      email: data.user.email,
+        prenom: data.user.prenom,
+        nom_util: data.user.nom_util,
+      });
 
       // Proche -> choix des patients suivis (skippable) ; Ma santé -> accueil
       router.replace(mode === 'aidant' ? '/patient-suivi' : '/(tabs)');
@@ -135,7 +162,8 @@ export function RegisterScreen() {
             <View style={styles.savedBox}>
               <Text style={styles.savedText}>
                 {useSaved
-                  ? `Ajouter cet espace au compte ${saved.email}`
+                  
+                  ? `Continuer avec le compte @${saved.nom_util ?? saved.email}`
                   : 'Un compte est mémorisé sur ce téléphone'}
               </Text>
               <Pressable onPress={() => setUseSaved((v) => !v)} hitSlop={8}>
@@ -180,8 +208,10 @@ export function RegisterScreen() {
                 />
               </>
             )}
+            
+              {!quick && (
             <Input
-              label="Mot de passe"
+             label="Mot de passe"
               labelColor={colors.textSoft}
               value={password}
               onChangeText={setPassword}
@@ -205,12 +235,14 @@ export function RegisterScreen() {
                 </Pressable>
               }
             />
+             
+            )}
           </View>
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
           <Button
-            title={loading ? 'Création...' : 'Créer mon compte'}
+            title={loading ? 'Création...' : quick ? 'Continuer' : 'Créer mon compte'}
             variant="brand"
             onPress={handleRegister}
             disabled={loading}

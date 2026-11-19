@@ -22,13 +22,13 @@ CREATE TABLE utilisateur (
     prenom      TEXT NOT NULL,
     email       TEXT NOT NULL UNIQUE
 );
-CREATE TYPE role_utilisateur AS ENUM ('PATIENT', 'AIDANT');
+
 
 -- Section 2, juste après CREATE TABLE utilisateur (...)
 CREATE TABLE utilisateur_role (
-    utilisateur_id UUID NOT NULL REFERENCES utilisateur(id) ON DELETE CASCADE,
-    role           role_utilisateur NOT NULL,
-    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+   utilisateur_id TEXT NOT NULL REFERENCES utilisateur(id) ON DELETE CASCADE,
+role           TEXT NOT NULL CHECK (role IN ('PATIENT','AIDANT')),
+created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
     PRIMARY KEY (utilisateur_id, role)
 );
 

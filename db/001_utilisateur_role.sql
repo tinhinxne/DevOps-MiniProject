@@ -21,5 +21,5 @@ SELECT utilisateur_id, 'PATIENT' FROM patient WHERE utilisateur_id IS NOT NULL
 ON CONFLICT DO NOTHING;
 
 INSERT INTO utilisateur_role (utilisateur_id, role)
-SELECT DISTINCT utilisateur_id, 'AIDANT' FROM accompagnement
+SELECT DISTINCT utilisateur_id, 'AIDANT'::role_utilisateur FROM accompagnement
 ON CONFLICT DO NOTHING;

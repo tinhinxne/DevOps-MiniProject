@@ -64,9 +64,20 @@ export async function register(
   await SecureStore.setItemAsync('token', data.token);
   return data;
 }
+// Compte déjà connecté sur ce téléphone : ajoute l'espace via le token, sans mot de passe.
+export async function addSpace(mode: Mode) {
+  const token = await SecureStore.getItemAsync('token');
+  const data: AuthResponse = await apiFetch('/auth/add-role', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token ?? ''}` },
+    body: JSON.stringify({ role: toRole(mode) }),
+  });
+  await SecureStore.setItemAsync('token', data.token);
+  return data;
+}
 
 // --- Compte mémorisé sur le téléphone (identifiant seulement, jamais le mot de passe) ---
-export type SavedAccount = { email: string; prenom?: string };
+export type SavedAccount = { email: string; prenom?: string; nom_util?: string };
 const SAVED_KEY = 'saved_account';
 
 export async function getSavedAccount(): Promise<SavedAccount | null> {
