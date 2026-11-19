@@ -1,6 +1,8 @@
+
 // mobile/src/utils/api.ts  — remplace ton fichier actuel
 // npx expo install expo-secure-store
 import * as SecureStore from 'expo-secure-store';
+
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
 
@@ -19,6 +21,7 @@ export class ApiError extends Error {
 }
 
 export async function apiFetch(path: string, options: RequestInit = {}) {
+
   let res: Response;
   try {
     res = await fetch(`${API_URL}${path}`, {
@@ -46,6 +49,7 @@ export async function login(identifiant: string, password: string, mode: Mode) {
     body: JSON.stringify({ identifiant, password, role: toRole(mode) }),
   });
   await SecureStore.setItemAsync('token', data.token);
+
   return data;
 }
 
@@ -59,6 +63,7 @@ export async function register(
 ) {
   const data: AuthResponse = await apiFetch('/auth/register', {
     method: 'POST',
+
     body: JSON.stringify({ nom_util, prenom, email, password, role: toRole(mode) }),
   });
   await SecureStore.setItemAsync('token', data.token);
@@ -87,3 +92,4 @@ export async function getSavedAccount(): Promise<SavedAccount | null> {
 export const saveAccount = (a: SavedAccount) =>
   SecureStore.setItemAsync(SAVED_KEY, JSON.stringify(a));
 export const forgetAccount = () => SecureStore.deleteItemAsync(SAVED_KEY);
+

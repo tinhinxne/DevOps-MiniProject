@@ -1,6 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+
 import { useEffect, useState } from 'react';
+
 import {
   KeyboardAvoidingView,
   Platform,
@@ -18,6 +20,7 @@ import { forgetAccount, getSavedAccount, login, saveAccount, type Mode } from '.
 export function LoginScreen() {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>('aidant');
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -67,6 +70,8 @@ export function LoginScreen() {
     }
   };
 
+
+
   return (
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView
@@ -114,6 +119,7 @@ export function LoginScreen() {
           </View>
 
           <View style={styles.form}>
+
             <Input
               label="E-mail ou nom d'utilisateur"
               labelColor={colors.textSoft}
@@ -125,6 +131,7 @@ export function LoginScreen() {
               autoCorrect={false}
               leftIcon={<Ionicons name="mail-outline" size={20} color={colors.textMuted} />}
             />
+
             <Input
               label="Mot de passe"
               labelColor={colors.textSoft}
@@ -181,6 +188,7 @@ export function LoginScreen() {
             />
           )}
 
+
           <Button
             title={loading ? 'Connexion...' : 'Se connecter'}
             variant="brand"
@@ -188,6 +196,7 @@ export function LoginScreen() {
             disabled={loading}
             rightIcon={<Ionicons name="chevron-forward" size={18} color={colors.white} />}
           />
+
 
           <View style={styles.divider}>
             <View style={styles.line} />
@@ -212,6 +221,7 @@ export function LoginScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.authBackground },
+  error: { color: 'red', fontSize: fontSize.sm, textAlign: 'center' },
   flex: { flex: 1 },
   content: { padding: spacing.lg, gap: spacing.md },
   titleRow: {

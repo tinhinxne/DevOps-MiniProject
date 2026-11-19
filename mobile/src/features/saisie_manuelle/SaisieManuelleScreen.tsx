@@ -94,7 +94,7 @@ export function SaisieManuelleScreen() {
     });
     setError('');
     // TODO: aller à la liste des ordonnances quand elle lira les médicaments enregistrés
-    router.back();
+        router.replace('/ordonnances');
   };
 
   return (
