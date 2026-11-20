@@ -12,30 +12,43 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Card, Input } from '../../components';
+import meds from '../../data/meds-dz.json';
 import { colors, fontSize, radius, spacing } from '../../theme';
 
-type Medicament = { id: string; name: string; dci: string; forme: string };
 
-// TODO: remplacer par l'appel à l'API du référentiel de médicaments
-const REFERENTIEL: Medicament[] = [
-  { id: '1', name: 'Doliprane 500 mg', dci: 'paracétamol', forme: 'comprimé' },
-  { id: '2', name: 'Doliprane 1000 mg', dci: 'paracétamol', forme: 'comprimé' },
-  { id: '3', name: 'Doliprane 150 mg', dci: 'paracétamol', forme: 'suppositoire' },
-  { id: '4', name: 'Metformine 500 mg', dci: 'metformine', forme: 'comprimé' },
-  { id: '5', name: 'Atorvastatine 20 mg', dci: 'atorvastatine', forme: 'comprimé' },
-];
+type Medicament = { id: string; n: string; g: string; f: string; d: string; c: string };
+const REFERENTIEL = meds as Medicament[];
+
 
 export function AjoutMed() {
+  // minuscules + sans accents, pour que "paracetamol" trouve "Paracétamol"
+const norm = (s: string) =>
+  s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const results = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return [];
-    return REFERENTIEL.filter(
-      (m) => m.name.toLowerCase().includes(q) || m.dci.toLowerCase().includes(q),
-    );
+ 
+  //   const results = useMemo(() => {
+  //   const q = norm(query.trim());
+  //   if (q.length < 1) return [];
+  //   return REFERENTIEL.filter(
+  //     (m) => norm(m.n).includes(q) || norm(m.g).includes(q),
+  //   ).slice(0, 30);
+  // }, [query]);
+
+    const results = useMemo(() => {
+    const q = norm(query.trim());
+    if (q.length < 1) return [];
+    const debut: Medicament[] = [];
+    const ailleurs: Medicament[] = [];
+    for (const m of REFERENTIEL) {
+      const n = norm(m.n);
+      const g = norm(m.g);
+      if (n.startsWith(q) || g.startsWith(q)) debut.push(m);
+      else if (n.includes(q) || g.includes(q)) ailleurs.push(m);
+    }
+    return [...debut, ...ailleurs].slice(0, 30);
   }, [query]);
 
   const handleContinue = () => {
@@ -104,8 +117,10 @@ export function AjoutMed() {
                       {selected ? <Ionicons name="checkmark" size={14} color={colors.white} /> : null}
                     </View>
                     <View style={styles.flex}>
-                      <Text style={styles.medName}>{m.name}</Text>
-                      <Text style={styles.medMeta}>{`DCI · ${m.dci} · ${m.forme}`}</Text>
+                      {/* <Text style={styles.medName}>{m.name}</Text>
+                      <Text style={styles.medMeta}>{`DCI · ${m.dci} · ${m.forme}`}</Text> */}
+                      <Text style={styles.medName}>{m.d ? `${m.n} ${m.d}` : m.n}</Text>
+<Text style={styles.medMeta}>{`DCI · ${m.g} · ${m.f}`}</Text>
                     </View>
                   </Pressable>
                 );
