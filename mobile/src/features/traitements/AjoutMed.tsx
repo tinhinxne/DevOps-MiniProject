@@ -1,6 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Stack, useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { Href, Stack, useRouter } from 'expo-router';import { useMemo, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -24,7 +23,11 @@ const REFERENTIEL: Medicament[] = [
   { id: '4', name: 'Metformine 500 mg', dci: 'metformine', forme: 'comprimé' },
   { id: '5', name: 'Atorvastatine 20 mg', dci: 'atorvastatine', forme: 'comprimé' },
 ];
-
+// "Doliprane 500 mg" -> { nom: "Doliprane", dosage: "500 mg" }
+function splitNomDosage(name: string) {
+  const m = name.match(/^(.*?)\s+(\d+(?:[.,]\d+)?\s*(?:mg|g|µg|mcg|ml|UI))\s*$/i);
+  return m ? { nom: m[1], dosage: m[2] } : { nom: name, dosage: '' };
+}
 export function AjoutMed() {
   const router = useRouter();
   const [query, setQuery] = useState('');
@@ -39,9 +42,14 @@ export function AjoutMed() {
   }, [query]);
 
   const handleContinue = () => {
-    // TODO: écran suivant (dosage, horaires, durée...)
-    console.log('Médicament choisi :', selectedId);
-  };
+  const med = REFERENTIEL.find((m) => m.id === selectedId);
+  if (!med) return;
+  const { nom, dosage } = splitNomDosage(med.name);
+  router.push({
+    pathname: '/configurer-prise',
+    params: { nom, dosage, dci: med.dci, forme: med.forme },
+  } as unknown as Href);
+};
 
   return (
     <SafeAreaView style={styles.safe}>

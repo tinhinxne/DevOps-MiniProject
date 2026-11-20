@@ -1,64 +1,82 @@
-import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { Button, Card, Input } from '../../components';
 import { colors, fontSize, radius, spacing } from '../../theme';
+import {
+  addPatientsSuivis,
+  getPatientsSuivis,
+  LIENS,
+  setSelectedPatient,
+  type Lien,
+  type Patient,
+} from '../../utils/api';
 
-type LinkedPatient = {
-  id: string;
-  name: string;
-  relation: string;
-};
-
-// À remplacer plus tard par les vraies données (SQLite / API)
-const LINKED_PATIENTS: LinkedPatient[] = [
-  { id: '1', name: 'Camille Martin', relation: 'Sœur · Fratrie' },
-  { id: '2', name: 'Louis Bernard', relation: 'Père · Parent' },
-];
-
-const RELATIONS = ['Parent', 'Conjoint(e)', 'Enfant', 'Fratrie', 'Ami(e)', 'Autre'];
-
-function initials(name: string) {
-  return name
-    .split(' ')
-    .map((p) => p[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
-}
+const lienLabel = (l: Lien) => LIENS.find((x) => x.value === l)?.label ?? l;
+const initials = (p: { prenom: string; nom: string }) =>
+  `${p.prenom[0] ?? ''}${p.nom[0] ?? ''}`.toUpperCase();
 
 export function PatientSuivi() {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [showForm, setShowForm] = useState(true);
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [showForm, setShowForm] = useState(false);
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [relation, setRelation] = useState('Parent');
+  const [relation, setRelation] = useState<Lien>('PARENT');
   const [relationOpen, setRelationOpen] = useState(false);
-  const [birthDate, setBirthDate] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
 
   const canSubmit = firstName.trim().length > 0 && lastName.trim().length > 0;
 
+  useEffect(() => {
+    getPatientsSuivis()
+      .then((list) => {
+        setPatients(list);
+        setShowForm(list.length === 0);
+      })
+      .catch((e: any) => {
+        if (e.code === 'TOKEN_INVALIDE') router.replace('/login');
+        else setError(e.message || 'Impossible de charger les patients.');
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
   const goNext = () => router.replace('/(tabs)');
 
-  const handleSelect = (id: string) => {
-    setSelectedId(id);
-    goNext(); // TODO: enregistrer le patient suivi avant de naviguer
+  // Choisir un patient existant : on le mémorise, le dashboard affichera son nom
+  const handleSelect = async (p: Patient) => {
+    await setSelectedPatient({ id: p.id, nom: p.nom, prenom: p.prenom });
+    goNext();
   };
 
-  const handleCreate = () => {
-    if (!canSubmit) return;
-    // TODO: créer le patient (SQLite / API) puis le définir comme patient suivi
-    goNext();
+  // Créer un nouveau patient suivi, puis le choisir
+  const handleCreate = async () => {
+    if (!canSubmit || saving) return;
+    setError('');
+    setSaving(true);
+    try {
+      const created = await addPatientsSuivis([
+        { prenom: firstName.trim(), nom: lastName.trim(), lien: relation },
+      ]);
+      await setSelectedPatient({
+        id: created[0].id,
+        nom: created[0].nom,
+        prenom: created[0].prenom,
+      });
+      goNext();
+    } catch (e: any) {
+      setError(e.message || "Impossible d'ajouter le patient.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <SafeAreaView style={styles.safe}>
-      {/* Lien "Passer" tout en haut (simple texte, pas un bouton) */}
       <View style={styles.topBar}>
         <Pressable onPress={goNext} hitSlop={12}>
           <Text style={styles.skip}>Passer</Text>
@@ -70,13 +88,11 @@ export function PatientSuivi() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* En-tête */}
         <View style={styles.header}>
           <Text style={styles.title}>Patient suivi</Text>
           <Text style={styles.subtitle}>Choisissez la personne que vous accompagnez</Text>
         </View>
 
-        {/* Bandeau info */}
         <Card style={styles.infoCard}>
           <View style={styles.infoIcon}>
             <Ionicons name="shield-checkmark" size={18} color={colors.patient} />
@@ -89,59 +105,58 @@ export function PatientSuivi() {
           </View>
         </Card>
 
-        {/* Patients déjà liés */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Patients déjà liés</Text>
-          <Text style={styles.sectionHint}>
-            Sélectionnez un patient ou ajoutez-en un nouveau.
-          </Text>
+        {loading && <ActivityIndicator color={colors.patient} />}
 
-          {LINKED_PATIENTS.map((p) => {
-            const selected = selectedId === p.id;
-            return (
-              <Pressable key={p.id} onPress={() => handleSelect(p.id)}>
-                <Card style={[styles.patientCard, selected && styles.patientCardSelected]}>
+        {patients.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Patients déjà liés</Text>
+            <Text style={styles.sectionHint}>
+              Sélectionnez un patient ou ajoutez-en un nouveau.
+            </Text>
+
+            {patients.map((p) => (
+              <Pressable key={p.id} onPress={() => handleSelect(p)}>
+                <Card style={styles.patientCard}>
                   <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>{initials(p.name)}</Text>
+                    <Text style={styles.avatarText}>{initials(p)}</Text>
                   </View>
                   <View style={styles.patientInfo}>
-                    <Text style={styles.patientName}>{p.name}</Text>
-                    <Text style={styles.patientRelation}>{p.relation}</Text>
+                    <Text style={styles.patientName}>
+                      {p.prenom} {p.nom}
+                    </Text>
+                    <Text style={styles.patientRelation}>{lienLabel(p.lien)}</Text>
                   </View>
                   <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
                 </Card>
               </Pressable>
-            );
-          })}
-        </View>
+            ))}
+          </View>
+        )}
 
-        {/* Ajouter un nouveau patient */}
-        <Pressable onPress={() => setShowForm((v) => !v)}>
-          <Card style={styles.addCard}>
-            <View style={styles.addIcon}>
-              <Ionicons name="add" size={22} color={colors.patient} />
-            </View>
-            <View style={styles.patientInfo}>
-              <Text style={styles.patientName}>Ajouter un nouveau patient</Text>
-              <Text style={styles.patientRelation}>
-                Renseignez les informations du patient
-              </Text>
-            </View>
-            <Ionicons
-              name={showForm ? 'chevron-up' : 'chevron-down'}
-              size={18}
-              color={colors.textMuted}
-            />
-          </Card>
-        </Pressable>
+        {!loading && (
+          <Pressable onPress={() => setShowForm((v) => !v)}>
+            <Card style={styles.addCard}>
+              <View style={styles.addIcon}>
+                <Ionicons name="add" size={22} color={colors.patient} />
+              </View>
+              <View style={styles.patientInfo}>
+                <Text style={styles.patientName}>Ajouter un nouveau patient</Text>
+                <Text style={styles.patientRelation}>
+                  Renseignez les informations du patient
+                </Text>
+              </View>
+              <Ionicons
+                name={showForm ? 'chevron-up' : 'chevron-down'}
+                size={18}
+                color={colors.textMuted}
+              />
+            </Card>
+          </Pressable>
+        )}
 
-        {/* Formulaire */}
         {showForm && (
           <Card style={styles.form}>
             <Text style={styles.formTitle}>Informations du patient</Text>
-            <Text style={styles.formHint}>
-              Ces informations permettent de personnaliser son suivi.
-            </Text>
 
             <View style={styles.row}>
               <View style={styles.flex}>
@@ -164,11 +179,10 @@ export function PatientSuivi() {
               </View>
             </View>
 
-            {/* Lien avec le patient (liste déroulante simple) */}
             <View style={styles.relationBlock}>
               <Text style={styles.label}>Lien avec le patient</Text>
               <Pressable style={styles.select} onPress={() => setRelationOpen((v) => !v)}>
-                <Text style={styles.selectText}>{relation}</Text>
+                <Text style={styles.selectText}>{lienLabel(relation)}</Text>
                 <Ionicons
                   name={relationOpen ? 'chevron-up' : 'chevron-down'}
                   size={18}
@@ -177,19 +191,21 @@ export function PatientSuivi() {
               </Pressable>
               {relationOpen && (
                 <View style={styles.options}>
-                  {RELATIONS.map((r) => (
+                  {LIENS.map((l) => (
                     <Pressable
-                      key={r}
+                      key={l.value}
                       style={styles.option}
                       onPress={() => {
-                        setRelation(r);
+                        setRelation(l.value);
                         setRelationOpen(false);
                       }}
                     >
-                      <Text style={[styles.optionText, r === relation && styles.optionActive]}>
-                        {r}
+                      <Text
+                        style={[styles.optionText, l.value === relation && styles.optionActive]}
+                      >
+                        {l.label}
                       </Text>
-                      {r === relation && (
+                      {l.value === relation && (
                         <Ionicons name="checkmark" size={16} color={colors.patient} />
                       )}
                     </Pressable>
@@ -198,49 +214,21 @@ export function PatientSuivi() {
               )}
             </View>
 
-            <Input
-              label="Date de naissance"
-              placeholder="JJ/MM/AAAA"
-              value={birthDate}
-              onChangeText={setBirthDate}
-              keyboardType="numbers-and-punctuation"
-              leftIcon={<Ionicons name="calendar-outline" size={18} color={colors.textMuted} />}
-            />
-
-            <Input
-              label="Adresse e-mail"
-              placeholder="patient@exemple.fr"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              leftIcon={<Ionicons name="mail-outline" size={18} color={colors.textMuted} />}
-            />
-
-            <Input
-              label="Téléphone"
-              placeholder="06 00 00 00 00"
-              value={phone}
-              onChangeText={setPhone}
-              keyboardType="phone-pad"
-              leftIcon={<Ionicons name="call-outline" size={18} color={colors.textMuted} />}
-            />
-
             <Button
-              title="Créer et suivre ce patient"
+              title={saving ? 'Ajout...' : 'Créer et suivre ce patient'}
               onPress={handleCreate}
-              disabled={!canSubmit}
+              disabled={!canSubmit || saving}
             />
-
-            <Text style={styles.footnote}>
-  {"Le patient sera notifié et pourra accéder à son propre espace s'il le souhaite."}
-</Text>
           </Card>
         )}
+
+        {error ? <Text style={styles.error}>{error}</Text> : null}
       </ScrollView>
     </SafeAreaView>
   );
 }
+
+export default PatientSuivi;
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F2F7FC' },
@@ -277,7 +265,6 @@ const styles = StyleSheet.create({
   sectionHint: { color: colors.textMuted, fontSize: fontSize.sm },
 
   patientCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  patientCardSelected: { borderWidth: 1.5, borderColor: colors.patient },
   avatar: {
     width: 40,
     height: 40,
@@ -310,7 +297,6 @@ const styles = StyleSheet.create({
 
   form: { gap: spacing.md },
   formTitle: { color: colors.text, fontSize: fontSize.md, fontWeight: '700' },
-  formHint: { color: colors.textMuted, fontSize: fontSize.sm },
   row: { flexDirection: 'row', gap: spacing.md },
 
   relationBlock: { gap: spacing.xs },
@@ -344,9 +330,5 @@ const styles = StyleSheet.create({
   optionText: { color: colors.text, fontSize: fontSize.md },
   optionActive: { color: colors.patient, fontWeight: '600' },
 
-  footnote: {
-    color: colors.textMuted,
-    fontSize: fontSize.sm,
-    textAlign: 'center',
-  },
+  error: { color: 'red', fontSize: fontSize.sm, textAlign: 'center' },
 });

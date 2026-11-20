@@ -4,8 +4,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, Polyline } from 'react-native-svg';
 import { Card, GradientBox } from '../../components';
 import { colors, fontSize, radius, spacing } from '../../theme';
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useRouter,useFocusEffect } from 'expo-router';
+import { useState, useCallback } from 'react';
+import { getSelectedPatient, type SelectedPatient } from '../../utils/api';
 // ---- Données de démo (à remplacer par la vraie source plus tard) ----
 type Med = {
   id: string;
@@ -165,6 +166,12 @@ function MedItem({ med }: { med: Med }) {
 // ---- Écran ----
 export function HomeScreen() {
   const router = useRouter();
+  const [suivi, setSuivi] = useState<SelectedPatient | null>(null);
+useFocusEffect(
+  useCallback(() => {
+    getSelectedPatient().then(setSuivi);
+  }, [])
+);
   const [period, setPeriod] = useState<Period>('week');
 const [pickerOpen, setPickerOpen] = useState(false);
 const s = STATS[period];
@@ -174,15 +181,22 @@ const rate = Math.round((s.correct / (s.correct + s.missed + s.postponed)) * 100
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {/* En-tête */}
         <View style={styles.header}>
-          <View>
-            <Text style={styles.hello}>Bonjour Camille</Text>
-            <Text style={styles.title}>Votre journée</Text>
-          </View>
-          <Pressable style={styles.bell} hitSlop={8}>
-            <Ionicons name="notifications-outline" size={20} color={colors.text} />
-            <View style={styles.bellDot} />
-          </Pressable>
-        </View>
+  <View>
+    <Text style={styles.hello}>{suivi ? 'Vous suivez' : 'Bonjour Camille'}</Text>
+    <Text style={styles.title}>
+      {suivi ? `${suivi.prenom} ${suivi.nom}` : 'Votre journée'}
+    </Text>
+    {suivi && (
+      <Pressable hitSlop={8} onPress={() => router.push('/patient-suivi')}>
+        <Text style={styles.sectionAction}>Changer de patient ›</Text>
+      </Pressable>
+    )}
+  </View>
+  <Pressable style={styles.bell} hitSlop={8}>
+    <Ionicons name="notifications-outline" size={20} color={colors.text} />
+    <View style={styles.bellDot} />
+  </Pressable>
+</View>
 
         {/* Carte dégradée : prises à venir */}
         <GradientBox

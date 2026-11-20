@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const pool = require('../db');
+const { validatePatients, addPatientsSuivis, listPatientsSuivis } = require('../lib/patients');
 
 const router = express.Router();
 const ROLES = ['PATIENT', 'AIDANT'];
@@ -33,15 +34,20 @@ async function addRole(client, user, role, nom) {
   }
 }
 
-// POST /auth/register  { nom_util, prenom, nom?, email, password, role }
+// POST /auth/register  { nom_util, prenom, nom?, email, password, role, patients? }
 //  - e-mail inconnu : crée le compte + l'espace demandé
 //  - e-mail connu   : vérifie le mot de passe, ajoute SEULEMENT l'espace manquant
+//  - role AIDANT    : patients = [{ nom, prenom, lien }] obligatoire
 router.post('/register', async (req, res) => {
-  const { nom_util, prenom, nom, email, password, role } = req.body || {};
+  const { nom_util, prenom, nom, email, password, role, patients } = req.body || {};
 
   if (!ROLES.includes(role)) return fail(res, 400, 'ROLE_INVALIDE', 'Rôle invalide');
   if (!email || !password) return fail(res, 400, 'CHAMPS_MANQUANTS', 'email et password requis');
   if (!/^\S+@\S+\.\S+$/.test(email)) return fail(res, 400, 'EMAIL_INVALIDE', 'Email invalide');
+  if (role === 'AIDANT') {
+    const perr = validatePatients(patients);
+    if (perr) return fail(res, 400, 'PATIENTS_INVALIDES', perr);
+  }
 
   const emailNorm = email.trim().toLowerCase();
   const client = await pool.connect();
@@ -91,8 +97,9 @@ router.post('/register', async (req, res) => {
     }
 
     await addRole(client, user, role, nom);
+    const suivis = role === 'AIDANT' ? await addPatientsSuivis(client, user.id, patients) : undefined;
     await client.query('COMMIT');
-    return res.status(201).json({ token: signToken(user.id), user: publicUser(user), role });
+    return res.status(201).json({ token: signToken(user.id), user: publicUser(user), role, patients: suivis });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     if (err.code === '23505') {
@@ -135,17 +142,23 @@ router.post('/login', async (req, res) => {
         roles,
       });
     }
-    return res.json({ token: signToken(user.id), user: publicUser(user), roles, role });
+    const patients = role === 'AIDANT' ? await listPatientsSuivis(pool, user.id) : undefined;
+    return res.json({ token: signToken(user.id), user: publicUser(user), roles, role, patients });
   } catch (err) {
     console.error('login error:', err.message);
     return fail(res, 500, 'ERREUR_SERVEUR', 'Erreur serveur');
   }
 });
-// POST /auth/add-role  (Authorization: Bearer <token>)  { role }
+
+// POST /auth/add-role  (Authorization: Bearer <token>)  { role, patients? }
 // Utilisateur déjà connecté : ajoute l'espace manquant sans mot de passe.
 router.post('/add-role', async (req, res) => {
-  const { role } = req.body || {};
+  const { role, patients } = req.body || {};
   if (!ROLES.includes(role)) return fail(res, 400, 'ROLE_INVALIDE', 'Rôle invalide');
+  if (role === 'AIDANT') {
+    const perr = validatePatients(patients);
+    if (perr) return fail(res, 400, 'PATIENTS_INVALIDES', perr);
+  }
 
   let userId;
   try {
@@ -173,8 +186,9 @@ router.post('/add-role', async (req, res) => {
       return fail(res, 409, 'ROLE_DEJA_EXISTANT', 'Cet espace existe déjà : connectez-vous');
     }
     await addRole(client, user, role);
+    const suivis = role === 'AIDANT' ? await addPatientsSuivis(client, user.id, patients) : undefined;
     await client.query('COMMIT');
-    return res.status(201).json({ token: signToken(user.id), user: publicUser(user), role });
+    return res.status(201).json({ token: signToken(user.id), user: publicUser(user), role, patients: suivis });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('add-role error:', err.message);
