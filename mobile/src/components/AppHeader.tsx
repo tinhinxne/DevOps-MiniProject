@@ -1,8 +1,8 @@
-import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { colors, radius, spacing } from '@/theme';
+import { NotifBell } from './NotifBell';
 
 type Props = {
   onPressNotifications?: () => void;
@@ -23,14 +23,7 @@ export function AppHeader({ onPressNotifications }: Props) {
           contentFit="contain"
         />
       </View>
-
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Notifications"
-        onPress={onPressNotifications}
-        style={({ pressed }) => [styles.bell, pressed && styles.pressed]}>
-        <Ionicons name="notifications-outline" size={20} color={colors.patient} />
-      </Pressable>
+      <NotifBell unread onPress={onPressNotifications} />
     </View>
   );
 }

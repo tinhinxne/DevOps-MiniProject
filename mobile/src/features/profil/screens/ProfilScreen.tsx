@@ -17,6 +17,7 @@ import { profilExtras } from '../constants';
 import { useProfile } from '../hooks/useProfile';
 import type { UsageMode } from '../types';
 
+
 export default function ProfilScreen() {
   const router = useRouter();
   const { profile } = useProfile();
@@ -174,7 +175,7 @@ const onLogout = () => {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.background },
+  root: { flex: 1, backgroundColor: colors.authBackground },
   content: { padding: spacing.md, gap: spacing.md },
   logout: { marginTop: spacing.sm },
 });

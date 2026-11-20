@@ -6,6 +6,7 @@ import { Card, GradientBox } from '../../components';
 import { colors, fontSize, radius, spacing } from '../../theme';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
+import { NotifBell } from '../../components/NotifBell';
 // ---- Données de démo (à remplacer par la vraie source plus tard) ----
 type Med = {
   id: string;
@@ -178,10 +179,8 @@ const rate = Math.round((s.correct / (s.correct + s.missed + s.postponed)) * 100
             <Text style={styles.hello}>Bonjour Camille</Text>
             <Text style={styles.title}>Votre journée</Text>
           </View>
-          <Pressable style={styles.bell} hitSlop={8}>
-            <Ionicons name="notifications-outline" size={20} color={colors.text} />
-            <View style={styles.bellDot} />
-          </Pressable>
+          {/* unread garde le petit point rouge (enlève-le pour ne plus l’afficher). */}
+          <NotifBell unread  onPress={() => {}} />
         </View>
 
         {/* Carte dégradée : prises à venir */}
