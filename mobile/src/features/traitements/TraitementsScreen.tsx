@@ -50,11 +50,7 @@ export function TraitementsScreen() {
   const stockFaible = medicaments.find((m) => m.stock !== undefined && m.stock < 5);
   const detail = liste.find((o) => o.id === detailId);
 
-const ajouter = () =>
-  router.push({
-    pathname: '/configurer-prise',
-    params: { nom: 'Doliprane', dosage: '500 mg', dci: 'paracétamol', forme: 'comprimé' },
-  } as unknown as Href);  
+const ajouter = () => router.push('/ajout-med'); 
   const ouvrirMed = (id: string) =>
     router.push({ pathname: '/detail-medicament', params: { id } } as unknown as Href);
 

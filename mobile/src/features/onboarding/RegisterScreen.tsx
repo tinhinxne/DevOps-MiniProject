@@ -13,8 +13,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BrandHeader, Button, Input, ModeCard } from '../../components';
 import { colors, fontSize, radius, spacing } from '../../theme';
-import { addSpace, getSavedAccount, register, saveAccount, type Mode, type SavedAccount } from '../../utils/api';
-
+import {
+  addSpace, getSavedAccount, LIENS, register, saveAccount,
+  type Mode, type NewPatient, type SavedAccount,
+} from '../../utils/api';
 export function RegisterScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ mode?: string }>();
@@ -31,6 +33,13 @@ export function RegisterScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [patients, setPatients] = useState<NewPatient[]>([{ nom: '', prenom: '', lien: 'PARENT' }]);
+const updatePatient = (i: number, patch: Partial<NewPatient>) =>
+  setPatients((list) => list.map((p, idx) => (idx === i ? { ...p, ...patch } : p)));
+const addPatientRow = () =>
+  setPatients((list) => [...list, { nom: '', prenom: '', lien: 'PARENT' }]);
+const removePatientRow = (i: number) =>
+  setPatients((list) => list.filter((_, idx) => idx !== i));
 
   // Compte déjà mémorisé sur ce téléphone -> proposé pour ajouter un 2e espace
   const [saved, setSaved] = useState<SavedAccount | null>(null);
@@ -49,10 +58,20 @@ const quick = useSaved && !!saved && !needPassword;
   const handleRegister = async () => {
     if (loading) return;
     setError('');
+    let suivis: NewPatient[] | undefined;
+if (mode === 'aidant') {
+  suivis = patients
+    .map((p) => ({ ...p, nom: p.nom.trim(), prenom: p.prenom.trim() }))
+    .filter((p) => p.nom || p.prenom);
+  if (suivis.length === 0 || suivis.some((p) => !p.nom || !p.prenom)) {
+    setError('Ajoutez au moins un patient suivi (nom et prénom).');
+    return;
+  }
+}
         if (quick) {
       setLoading(true);
       try {
-        const data = await addSpace(mode);
+        const data = await addSpace(mode, suivis);
         await saveAccount({
           email: data.user.email,
           prenom: data.user.prenom,
@@ -91,10 +110,9 @@ const quick = useSaved && !!saved && !needPassword;
     setLoading(true);
     try {
       const data =
-        useSaved && saved
-          ? await register('', saved.prenom ?? '', saved.email, password, mode)
-          : await register(nomUtil.trim(), prenom.trim(), email.trim(), password, mode);
-
+  useSaved && saved
+    ? await register('', saved.prenom ?? '', saved.email, password, mode, suivis)
+    : await register(nomUtil.trim(), prenom.trim(), email.trim(), password, mode, suivis);
      await saveAccount({
       email: data.user.email,
         prenom: data.user.prenom,
@@ -238,7 +256,52 @@ const quick = useSaved && !!saved && !needPassword;
              
             )}
           </View>
-
+            {mode === 'aidant' && (
+  <View style={styles.form}>
+    <Text style={styles.sectionLabel}>Patients que vous suivez</Text>
+    {patients.map((p, i) => (
+      <View key={i} style={styles.patientBox}>
+        <Input
+          label="Prénom du patient"
+          labelColor={colors.textSoft}
+          value={p.prenom}
+          onChangeText={(t: string) => updatePatient(i, { prenom: t })}
+          placeholder="Prénom"
+          leftIcon={personIcon}
+        />
+        <Input
+          label="Nom du patient"
+          labelColor={colors.textSoft}
+          value={p.nom}
+          onChangeText={(t: string) => updatePatient(i, { nom: t })}
+          placeholder="Nom"
+          leftIcon={personIcon}
+        />
+        <View style={styles.chipsRow}>
+          {LIENS.map((l) => (
+            <Pressable
+              key={l.value}
+              onPress={() => updatePatient(i, { lien: l.value })}
+              style={[styles.chip, p.lien === l.value && styles.chipActive]}
+            >
+              <Text style={[styles.chipText, p.lien === l.value && styles.chipTextActive]}>
+                {l.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        {patients.length > 1 && (
+          <Pressable onPress={() => removePatientRow(i)} hitSlop={8}>
+            <Text style={styles.removeText}>Retirer ce patient</Text>
+          </Pressable>
+        )}
+      </View>
+    ))}
+    <Pressable onPress={addPatientRow} hitSlop={8}>
+      <Text style={styles.savedLink}>+ Ajouter un autre patient</Text>
+    </Pressable>
+  </View>
+)}
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
           <Button
@@ -321,4 +384,17 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.sm,
   },
+  patientBox: {
+  gap: spacing.sm, padding: spacing.md, borderRadius: radius.md,
+  backgroundColor: colors.card,
+},
+chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+chip: {
+  paddingHorizontal: spacing.md, paddingVertical: 6,
+  borderRadius: radius.pill, backgroundColor: colors.tintBlue,
+},
+chipActive: { backgroundColor: colors.brand },
+chipText: { fontSize: 12, fontWeight: '600', color: colors.brand },
+chipTextActive: { color: colors.white },
+removeText: { fontSize: fontSize.sm, color: 'red', fontWeight: '600' },
 });

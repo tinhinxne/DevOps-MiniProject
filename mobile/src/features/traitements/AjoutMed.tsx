@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Stack, useRouter } from 'expo-router';
+import { Href, Stack, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
   KeyboardAvoidingView,
@@ -52,9 +52,13 @@ const norm = (s: string) =>
   }, [query]);
 
   const handleContinue = () => {
-    // TODO: écran suivant (dosage, horaires, durée...)
-    console.log('Médicament choisi :', selectedId);
-  };
+  const med = REFERENTIEL.find((m) => m.id === selectedId);
+  if (!med) return;
+  router.push({
+    pathname: '/configurer-prise',
+    params: { nom: med.n, dosage: med.d, dci: med.g, forme: med.f },
+  } as unknown as Href);
+};
 
   return (
     <SafeAreaView style={styles.safe}>
