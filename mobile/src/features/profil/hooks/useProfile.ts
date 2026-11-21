@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 
 import { getProfile } from '../services/profileService';
 import type { UserProfile } from '../types';
@@ -6,15 +7,19 @@ import type { UserProfile } from '../types';
 export function useProfile() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
 
-  useEffect(() => {
-    let active = true;
-    getProfile().then((data) => {
-      if (active) setProfile(data);
-    });
-    return () => {
-      active = false;
-    };
+  const refresh = useCallback(async () => {
+    try {
+      setProfile(await getProfile());
+    } catch {
+      // serveur injoignable : on garde l'ancien état
+    }
   }, []);
 
-  return { profile, isLoading: profile === null };
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh])
+  );
+
+  return { profile, isLoading: profile === null, refresh };
 }

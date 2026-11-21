@@ -7,6 +7,9 @@ app.use(cors());
 app.use(express.json());
 app.use('/auth', require('./routes/auth'));
 app.use('/patients', require('./routes/patients'));
+app.use('/profile', require('./routes/profile'));
+app.use('/aidants', require('./routes/aidants'));
+app.use('/medical', require('./routes/medical'));
 app.get('/health', async (req, res) => {
   try {
     await pool.query('SELECT 1');

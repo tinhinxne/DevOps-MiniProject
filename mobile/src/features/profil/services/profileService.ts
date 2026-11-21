@@ -1,7 +1,12 @@
-import { mockProfile } from '../data/mockProfile';
-import type { UserProfile } from '../types';
+import { getMyProfile } from '@/utils/api';
+import type { UsageMode, UserProfile } from '../types';
 
-// TODO: remplacer par la lecture SQLite (hors ligne), puis l'API quand le backend sera prêt.
 export async function getProfile(): Promise<UserProfile> {
-  return mockProfile;
+  const p = await getMyProfile();
+  return {
+    firstName: p.prenom,
+    lastName: p.nom && p.nom !== p.prenom ? p.nom : '',
+    email: p.email,
+    roles: p.roles.map((r): UsageMode => (r === 'AIDANT' ? 'aidant' : 'patient')),
+  };
 }

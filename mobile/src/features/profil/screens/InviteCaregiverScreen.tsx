@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -15,6 +16,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, spacing } from '@/theme';
+import { ApiError, inviteAidant } from '@/utils/api';
 import { SubPageHeader } from '../../../components/SubPageHeader';
 import { Stepper } from '../../../components/Stepper';
 
@@ -23,31 +25,76 @@ const FIELD_BG = '#F4F8FD';
 
 const RELATIONS = ['Sœur', 'Parent', 'Ami(e)'];
 
+const EMAIL_REGEX = /^\S+@\S+\.\S+$/;
+
 export default function InviteCaregiverScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
   const [firstName, setFirstName] = useState('');
-  const [contact, setContact] = useState('');
+  const [email, setEmail] = useState('');
   const [relation, setRelation] = useState<string>(RELATIONS[0]);
   const [otherRelation, setOtherRelation] = useState('');
   const [threshold, setThreshold] = useState(3);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const canSend = firstName.trim().length > 0 && contact.trim().length > 0;
+  const canSend = firstName.trim().length > 0 && email.trim().length > 0 && !sending;
 
   const selectRelation = (r: string) => {
     setRelation(r);
     setOtherRelation('');
   };
 
-  const onSend = () => {
+  const notify = (title: string, message: string, onOk?: () => void) => {
+    if (Platform.OS === 'web') {
+      window.alert(`${title}\n${message}`);
+      onOk?.();
+      return;
+    }
+    Alert.alert(title, message, [{ text: 'OK', onPress: onOk }]);
+  };
+
+  const onSend = async () => {
     if (!canSend) return;
-    const finalRelation = otherRelation.trim() || relation;
-    // TODO : appeler le service d'invitation avec { firstName, contact, relation: finalRelation, threshold }
-    void finalRelation;
-    Alert.alert('Invitation envoyée', `${firstName.trim()} va recevoir votre invitation.`, [
-      { text: 'OK', onPress: () => router.back() },
-    ]);
+    setError(null);
+
+    const prenom = firstName.trim();
+    const contact = email.trim().toLowerCase();
+    const lien = otherRelation.trim() || relation;
+
+    if (!EMAIL_REGEX.test(contact)) {
+      setError('Adresse e-mail invalide.');
+      return;
+    }
+
+    setSending(true);
+    try {
+      await inviteAidant({
+        prenom,
+        contact,
+        canal: 'EMAIL',
+        lien,
+        seuil_oublis: threshold,
+      });
+      notify('Invitation envoyée', `${prenom} va recevoir un e-mail d’invitation.`, () =>
+        router.back(),
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.code === 'AIDANT_DEJA_INVITE') {
+        setError('Cette personne a déjà été invitée.');
+      } else if (e instanceof ApiError && e.code === 'CONTACT_INVALIDE') {
+        setError('Cette adresse e-mail est invalide.');
+      } else if (e instanceof ApiError && e.code === 'ENVOI_ECHOUE') {
+        setError("L'e-mail n'a pas pu être envoyé, réessayez.");
+      } else if (e instanceof ApiError && e.status === 401) {
+        setError('Session expirée, reconnectez-vous.');
+      } else {
+        setError(e instanceof ApiError ? e.message : 'Envoi impossible, réessayez.');
+      }
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -89,17 +136,21 @@ export default function InviteCaregiverScreen() {
           </View>
 
           <View style={styles.field}>
-            <Text style={styles.label}>Adresse e-mail ou Whatsapp</Text>
+            <Text style={styles.label}>Adresse e-mail</Text>
             <TextInput
-              style={styles.input}
-              value={contact}
-              onChangeText={setContact}
+              style={[styles.input, error ? styles.inputError : null]}
+              value={email}
+              onChangeText={(t) => {
+                setEmail(t);
+                if (error) setError(null);
+              }}
               autoCapitalize="none"
               autoCorrect={false}
               keyboardType="email-address"
               placeholder="nom@exemple.com"
               placeholderTextColor="#94A3B8"
             />
+            {error ? <Text style={styles.error}>{error}</Text> : null}
           </View>
 
           <View style={styles.field}>
@@ -150,8 +201,14 @@ export default function InviteCaregiverScreen() {
           disabled={!canSend}
           accessibilityRole="button"
           accessibilityState={{ disabled: !canSend }}>
-          <Ionicons name="mail-outline" size={16} color="#FFFFFF" />
-          <Text style={styles.sendText}>Envoyer l’invitation</Text>
+          {sending ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <>
+              <Ionicons name="mail-outline" size={16} color="#FFFFFF" />
+              <Text style={styles.sendText}>Envoyer l’invitation</Text>
+            </>
+          )}
         </Pressable>
 
         <Text style={styles.footer}>Vous pouvez retirer votre aidant à tout moment</Text>
@@ -206,6 +263,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#0F172A',
   },
+  inputError: { borderColor: '#D64545' },
+  error: { fontSize: 12, color: '#D64545' },
 
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
