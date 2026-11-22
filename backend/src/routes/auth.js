@@ -152,10 +152,12 @@ router.post('/login', async (req, res) => {
 
 // POST /auth/add-role  (Authorization: Bearer <token>)  { role, patients? }
 // Utilisateur déjà connecté : ajoute l'espace manquant sans mot de passe.
+// Pour AIDANT, patients est optionnel : la personne accompagnée peut être ajoutée plus tard.
 router.post('/add-role', async (req, res) => {
   const { role, patients } = req.body || {};
   if (!ROLES.includes(role)) return fail(res, 400, 'ROLE_INVALIDE', 'Rôle invalide');
-  if (role === 'AIDANT') {
+  const hasPatients = Array.isArray(patients) && patients.length > 0;
+  if (role === 'AIDANT' && hasPatients) {
     const perr = validatePatients(patients);
     if (perr) return fail(res, 400, 'PATIENTS_INVALIDES', perr);
   }
@@ -186,7 +188,10 @@ router.post('/add-role', async (req, res) => {
       return fail(res, 409, 'ROLE_DEJA_EXISTANT', 'Cet espace existe déjà : connectez-vous');
     }
     await addRole(client, user, role);
-    const suivis = role === 'AIDANT' ? await addPatientsSuivis(client, user.id, patients) : undefined;
+    const suivis =
+      role === 'AIDANT' && hasPatients
+        ? await addPatientsSuivis(client, user.id, patients)
+        : undefined;
     await client.query('COMMIT');
     return res.status(201).json({ token: signToken(user.id), user: publicUser(user), role, patients: suivis });
   } catch (err) {

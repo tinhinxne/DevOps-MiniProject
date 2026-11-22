@@ -4,9 +4,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, Polyline } from 'react-native-svg';
 import { Card, GradientBox } from '../../components';
 import { colors, fontSize, radius, spacing } from '../../theme';
-import { useRouter,useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useState, useCallback } from 'react';
-import { getSelectedPatient, type SelectedPatient } from '../../utils/api';
+import { getMyProfile, getSelectedPatient, type SelectedPatient } from '../../utils/api';
 import { NotifBell } from '../../components/NotifBell';
 // ---- Données de démo (à remplacer par la vraie source plus tard) ----
 type Med = {
@@ -168,42 +168,64 @@ function MedItem({ med }: { med: Med }) {
 export function HomeScreen() {
   const router = useRouter();
   const [suivi, setSuivi] = useState<SelectedPatient | null>(null);
-useFocusEffect(
-  useCallback(() => {
-    getSelectedPatient().then(setSuivi);
-  }, [])
-);
+  const [firstName, setFirstName] = useState<string | null>(null);
+
+  // À chaque retour sur l'écran : patient suivi + prénom de l'utilisateur connecté
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+
+      getSelectedPatient().then((p) => {
+        if (active) setSuivi(p);
+      });
+
+      getMyProfile()
+        .then((p) => {
+          if (active) setFirstName(p.prenom);
+        })
+        .catch(() => {
+          // non connecté ou serveur injoignable : on garde « Bonjour » tout court
+        });
+
+      return () => {
+        active = false;
+      };
+    }, [])
+  );
+
   const [period, setPeriod] = useState<Period>('week');
-const [pickerOpen, setPickerOpen] = useState(false);
-const s = STATS[period];
-const rate = Math.round((s.correct / (s.correct + s.missed + s.postponed)) * 100);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const s = STATS[period];
+  const rate = Math.round((s.correct / (s.correct + s.missed + s.postponed)) * 100);
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {/* En-tête */}
         <View style={styles.header}>
-  <View>
-    <Text style={styles.hello}>{suivi ? 'Vous suivez' : 'Bonjour Camille'}</Text>
-    <Text style={styles.title}>
-      {suivi ? `${suivi.prenom} ${suivi.nom}` : 'Votre journée'}
-    </Text>
-    {suivi && (
-      <Pressable hitSlop={8} onPress={() => router.push('/patient-suivi')}>
-        <Text style={styles.sectionAction}>Changer de patient ›</Text>
-      </Pressable>
-    )}
-  </View>
-  {/* unread garde le petit point rouge (enlève-le pour ne plus l'afficher). */}
-  <NotifBell unread onPress={() => {}} />
-</View>
+          <View>
+            <Text style={styles.hello}>
+              {suivi ? 'Vous suivez' : firstName ? `Bonjour ${firstName}` : 'Bonjour'}
+            </Text>
+            <Text style={styles.title}>
+              {suivi ? `${suivi.prenom} ${suivi.nom}` : 'Votre journée'}
+            </Text>
+            {suivi && (
+              <Pressable hitSlop={8} onPress={() => router.push('/patient-suivi')}>
+                <Text style={styles.sectionAction}>Changer de patient ›</Text>
+              </Pressable>
+            )}
+          </View>
+          {/* unread garde le petit point rouge (enlève-le pour ne plus l'afficher). */}
+          <NotifBell unread onPress={() => {}} />
+        </View>
 
         {/* Carte dégradée : prises à venir */}
         <GradientBox
-  from={colors.brandStart}
-  to={colors.brandEnd}
-  radius={radius.lg}
-  style={styles.hero}
->
+          from={colors.brandStart}
+          to={colors.brandEnd}
+          radius={radius.lg}
+          style={styles.hero}
+        >
           <View style={styles.heroTop}>
             <View>
               <Text style={styles.heroDate}>Mardi 24 juin</Text>
@@ -222,71 +244,71 @@ const rate = Math.round((s.correct / (s.correct + s.missed + s.postponed)) * 100
           </View>
         </GradientBox>
 
-     {/* Observance */}
-<Card style={styles.card}>
-  <View style={styles.obsHeader}>
-    <View style={styles.obsTitleRow}>
-      <View style={styles.smallIcon}>
-        <Ionicons name="stats-chart-outline" size={14} color={colors.brand} />
-      </View>
-      <Text style={styles.cardTitle}>Mon observance</Text>
-    </View>
-    <Pressable hitSlop={8} onPress={() => setPickerOpen((o) => !o)}>
-      <Text style={styles.period}>{s.label} {pickerOpen ? '▴' : '▾'}</Text>
-    </Pressable>
-  </View>
+        {/* Observance */}
+        <Card style={styles.card}>
+          <View style={styles.obsHeader}>
+            <View style={styles.obsTitleRow}>
+              <View style={styles.smallIcon}>
+                <Ionicons name="stats-chart-outline" size={14} color={colors.brand} />
+              </View>
+              <Text style={styles.cardTitle}>Mon observance</Text>
+            </View>
+            <Pressable hitSlop={8} onPress={() => setPickerOpen((o) => !o)}>
+              <Text style={styles.period}>{s.label} {pickerOpen ? '▴' : '▾'}</Text>
+            </Pressable>
+          </View>
 
-  {pickerOpen && (
-    <View style={styles.periodRow}>
-      {(Object.keys(STATS) as Period[]).map((p) => (
-        <Pressable
-          key={p}
-          onPress={() => { setPeriod(p); setPickerOpen(false); }}
-          style={[styles.periodChip, p === period && styles.periodChipActive]}
-        >
-          <Text style={[styles.periodChipText, p === period && styles.periodChipTextActive]}>
-            {STATS[p].label}
-          </Text>
-        </Pressable>
-      ))}
-    </View>
-  )}
+          {pickerOpen && (
+            <View style={styles.periodRow}>
+              {(Object.keys(STATS) as Period[]).map((p) => (
+                <Pressable
+                  key={p}
+                  onPress={() => { setPeriod(p); setPickerOpen(false); }}
+                  style={[styles.periodChip, p === period && styles.periodChipActive]}
+                >
+                  <Text style={[styles.periodChipText, p === period && styles.periodChipTextActive]}>
+                    {STATS[p].label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
 
-  <View style={styles.obsBody}>
-    <View style={styles.donutCol}>
-      <Donut value={rate} />
-      <View style={styles.streak}>
-        <Ionicons name="flame" size={12} color={colors.warning} />
-        <Text style={styles.streakText}>Série : {STREAK_DAYS} jours sans oubli</Text>
-      </View>
-    </View>
-    <View style={styles.flex}>
-      <View style={styles.legend}>
-        <View style={[styles.legendDot, { backgroundColor: colors.success }]} />
-        <Text style={styles.legendText}>Prises confirmées</Text>
-        <View style={[styles.legendDot, { backgroundColor: colors.border }]} />
-        <Text style={styles.legendText}>Total</Text>
-      </View>
-      <Svg width={150} height={56}>
-        <Sparkline data={s.total} color={colors.border} dashed />
-        <Sparkline data={s.confirmed} color={colors.success} />
-      </Svg>
-      <View style={styles.counters}>
-        <Text style={[styles.counter, { color: colors.success }]}>
-          {s.correct} correcte{s.correct > 1 ? 's' : ''}
-        </Text>
-        <Text style={[styles.counter, { color: colors.danger }]}>
-          {s.missed} oubli{s.missed > 1 ? 's' : ''}
-        </Text>
-        <Text style={[styles.counter, { color: colors.textSoft }]}>
-          {s.postponed} reportée{s.postponed > 1 ? 's' : ''}
-        </Text>
-      </View>
-    </View>
-  </View>
-</Card>
+          <View style={styles.obsBody}>
+            <View style={styles.donutCol}>
+              <Donut value={rate} />
+              <View style={styles.streak}>
+                <Ionicons name="flame" size={12} color={colors.warning} />
+                <Text style={styles.streakText}>Série : {STREAK_DAYS} jours sans oubli</Text>
+              </View>
+            </View>
+            <View style={styles.flex}>
+              <View style={styles.legend}>
+                <View style={[styles.legendDot, { backgroundColor: colors.success }]} />
+                <Text style={styles.legendText}>Prises confirmées</Text>
+                <View style={[styles.legendDot, { backgroundColor: colors.border }]} />
+                <Text style={styles.legendText}>Total</Text>
+              </View>
+              <Svg width={150} height={56}>
+                <Sparkline data={s.total} color={colors.border} dashed />
+                <Sparkline data={s.confirmed} color={colors.success} />
+              </Svg>
+              <View style={styles.counters}>
+                <Text style={[styles.counter, { color: colors.success }]}>
+                  {s.correct} correcte{s.correct > 1 ? 's' : ''}
+                </Text>
+                <Text style={[styles.counter, { color: colors.danger }]}>
+                  {s.missed} oubli{s.missed > 1 ? 's' : ''}
+                </Text>
+                <Text style={[styles.counter, { color: colors.textSoft }]}>
+                  {s.postponed} reportée{s.postponed > 1 ? 's' : ''}
+                </Text>
+              </View>
+            </View>
+          </View>
+        </Card>
 
-                {/* Prochain rendez-vous */}
+        {/* Prochain rendez-vous */}
         <SectionHeader
           title="Prochain rendez-vous"
           action="Voir tout ›"
@@ -363,17 +385,17 @@ const styles = StyleSheet.create({
   donutText: { position: 'absolute', fontSize: fontSize.lg, fontWeight: '800', color: colors.text },
   donutCaption: { fontSize: 11, fontWeight: '600', color: colors.success },
   streak: { flexDirection: 'row', alignItems: 'center', gap: 4, maxWidth: 110 },
-streakText: { fontSize: 11, fontWeight: '600', color: colors.success, textAlign: 'center' },
-periodRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
-periodChip: {
-  paddingHorizontal: spacing.md, paddingVertical: 6,
-  borderRadius: radius.pill, backgroundColor: colors.tintBlue,
-},
-periodChipActive: { backgroundColor: colors.brand },
-periodChipText: { fontSize: 12, fontWeight: '600', color: colors.brand },
-periodChipTextActive: { color: colors.white },
-counters: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
-counter: { fontSize: 11, fontWeight: '700' },
+  streakText: { fontSize: 11, fontWeight: '600', color: colors.success, textAlign: 'center' },
+  periodRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
+  periodChip: {
+    paddingHorizontal: spacing.md, paddingVertical: 6,
+    borderRadius: radius.pill, backgroundColor: colors.tintBlue,
+  },
+  periodChipActive: { backgroundColor: colors.brand },
+  periodChipText: { fontSize: 12, fontWeight: '600', color: colors.brand },
+  periodChipTextActive: { color: colors.white },
+  counters: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
+  counter: { fontSize: 11, fontWeight: '700' },
   legend: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: spacing.sm, flexWrap: 'wrap' },
   legendDot: { width: 8, height: 8, borderRadius: 4 },
   legendText: { fontSize: 10, color: colors.textSoft, marginRight: spacing.sm },
