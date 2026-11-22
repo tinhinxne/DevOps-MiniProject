@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -95,6 +95,9 @@ function buildMaladies(selected: string[], other: string): string | null {
   return all.length ? all.join(', ') : null;
 }
 
+const errMessage = (e: unknown, fallback: string) =>
+  e instanceof ApiError ? e.message : fallback;
+
 function SectionTitle({ children }: { children: string }) {
   return <Text style={styles.sectionTitle}>{children}</Text>;
 }
@@ -108,6 +111,7 @@ export default function MedicalProfileScreen() {
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [saving, setSaving] = useState(false);
   const [personName, setPersonName] = useState<string | null>(null);
 
@@ -135,37 +139,46 @@ export default function MedicalProfileScreen() {
     Alert.alert(title, message, [{ text: 'OK', onPress: onOk }]);
   };
 
-  const errMessage = (e: unknown, fallback: string) =>
-    e instanceof ApiError ? e.message : fallback;
+  // Chargement : tous les setState se font après le await, jamais en synchrone
+  useEffect(() => {
+    let active = true;
 
-  const load = useCallback(async () => {
+    (async () => {
+      try {
+        const p = await getMedical(personId);
+        if (!active) return;
+
+        const m = parseMaladies(p.maladies_chroniques);
+        setSelected(m.selected);
+        setOther(m.other);
+        setAllergies(p.allergies ?? '');
+        setDoctors(p.medecins);
+        setPersonName(personId ? p.person.prenom : null);
+
+        const next = { ...DEFAULT_TIMES };
+        (Object.keys(HABIT_COLUMN) as HabitKey[]).forEach((k) => {
+          const v = p.habitudes[HABIT_COLUMN[k]];
+          if (v) next[k] = v;
+        });
+        setTimes(next);
+      } catch (e) {
+        if (active) setLoadError(errMessage(e, 'Chargement impossible.'));
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [personId, reloadKey]);
+
+  // Bouton « Réessayer » : on repasse en chargement et on relance l'effet
+  const retry = () => {
     setLoading(true);
     setLoadError(null);
-    try {
-      const p = await getMedical(personId);
-      const m = parseMaladies(p.maladies_chroniques);
-      setSelected(m.selected);
-      setOther(m.other);
-      setAllergies(p.allergies ?? '');
-      setDoctors(p.medecins);
-      setPersonName(isAidantView ? p.person.prenom : null);
-
-      const next = { ...DEFAULT_TIMES };
-      (Object.keys(HABIT_COLUMN) as HabitKey[]).forEach((k) => {
-        const v = p.habitudes[HABIT_COLUMN[k]];
-        if (v) next[k] = v;
-      });
-      setTimes(next);
-    } catch (e) {
-      setLoadError(errMessage(e, 'Chargement impossible.'));
-    } finally {
-      setLoading(false);
-    }
-  }, [personId, isAidantView]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+    setReloadKey((k) => k + 1);
+  };
 
   const toggle = (c: string) =>
     setSelected((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
@@ -180,7 +193,7 @@ export default function MedicalProfileScreen() {
       setDocSpec('');
       setAdding(false);
     } catch (e) {
-      notify('Erreur', errMessage(e, "Ajout impossible."));
+      notify('Erreur', errMessage(e, 'Ajout impossible.'));
     } finally {
       setDocBusy(false);
     }
@@ -254,7 +267,7 @@ export default function MedicalProfileScreen() {
         ) : loadError ? (
           <View style={styles.center}>
             <Text style={styles.errorText}>{loadError}</Text>
-            <Pressable style={styles.retryBtn} onPress={load}>
+            <Pressable style={styles.retryBtn} onPress={retry}>
               <Text style={styles.retryText}>Réessayer</Text>
             </Pressable>
           </View>
