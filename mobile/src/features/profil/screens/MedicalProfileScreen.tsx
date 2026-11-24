@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -10,14 +12,20 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, spacing } from '@/theme';
+import {
+  addMedecin,
+  ApiError,
+  getMedical,
+  removeMedecin,
+  saveMedical,
+  type HabitudesRepas,
+  type Medecin,
+} from '@/utils/api';
 import { SubPageHeader } from '../../../components/SubPageHeader';
-
-import { mockFollowed } from '../data/mockProfile';
-import { useDoctors } from '../hooks/useDoctors';
 
 const BORDER = '#D6E6F5';
 const FIELD_BG = '#F4F8FD';
@@ -41,55 +49,203 @@ const HABITS: { key: HabitKey; label: string }[] = [
   { key: 'bed', label: 'Coucher' },
 ];
 
+// Correspondance écran -> colonnes de habitudes_repas
+const HABIT_COLUMN: Record<HabitKey, keyof HabitudesRepas> = {
+  wake: 'reveil',
+  breakfast: 'petit_dejeuner',
+  lunch: 'dejeuner',
+  dinner: 'diner',
+  bed: 'coucher',
+};
+
+const DEFAULT_TIMES: Record<HabitKey, string> = {
+  wake: '07:00',
+  breakfast: '07:30',
+  lunch: '12:30',
+  dinner: '20:00',
+  bed: '23:00',
+};
+
+const TIME_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
+
 // HH:MM : on ajoute le ":" automatiquement pendant la saisie
 function formatTime(raw: string) {
   const d = raw.replace(/\D/g, '').slice(0, 4);
   return d.length <= 2 ? d : `${d.slice(0, 2)}:${d.slice(2)}`;
 }
 
+// La base stocke les maladies dans un seul texte : « Diabète, Asthme, Myopie »
+function parseMaladies(raw: string | null) {
+  const parts = (raw ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return {
+    selected: parts.filter((p) => CONDITIONS.includes(p)),
+    other: parts.filter((p) => !CONDITIONS.includes(p)).join(', '),
+  };
+}
+
+function buildMaladies(selected: string[], other: string): string | null {
+  const extra = other
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const all = [...selected, ...extra];
+  return all.length ? all.join(', ') : null;
+}
+
+const errMessage = (e: unknown, fallback: string) =>
+  e instanceof ApiError ? e.message : fallback;
+
 function SectionTitle({ children }: { children: string }) {
   return <Text style={styles.sectionTitle}>{children}</Text>;
 }
 
 export default function MedicalProfileScreen() {
+  const router = useRouter();
   const insets = useSafeAreaInsets();
 
   // Mode aidant : personId est fourni. Mode patient : il est absent.
   const { personId } = useLocalSearchParams<{ personId?: string }>();
-  const person = mockFollowed.find((p) => p.id === personId);
 
-  // Médecins (store partagé entre les écrans)
-  const { doctors, add, remove } = useDoctors(personId);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [personName, setPersonName] = useState<string | null>(null);
+
+  // Médecins
+  const [doctors, setDoctors] = useState<Medecin[]>([]);
   const [adding, setAdding] = useState(false);
   const [docName, setDocName] = useState('');
   const [docSpec, setDocSpec] = useState('');
+  const [docBusy, setDocBusy] = useState(false);
 
-  const addDoctor = () => {
-    if (!docName.trim()) return;
-    add(docName.trim(), docSpec.trim());
-    setDocName('');
-    setDocSpec('');
-    setAdding(false);
-  };
-
-  // TODO : initialiser avec les données de useProfile() (ou de la personne suivie) puis envoyer à l'API dans onSave
+  // Profil
   const [selected, setSelected] = useState<string[]>([]);
   const [other, setOther] = useState('');
   const [allergies, setAllergies] = useState('');
-  const [times, setTimes] = useState<Record<HabitKey, string>>({
-    wake: '07:00',
-    breakfast: '07:30',
-    lunch: '12:30',
-    dinner: '20:00',
-    bed: '23:00',
-  });
+  const [times, setTimes] = useState<Record<HabitKey, string>>(DEFAULT_TIMES);
+
+  const isAidantView = Boolean(personId);
+
+  const notify = (title: string, message: string, onOk?: () => void) => {
+    if (Platform.OS === 'web') {
+      window.alert(`${title}\n${message}`);
+      onOk?.();
+      return;
+    }
+    Alert.alert(title, message, [{ text: 'OK', onPress: onOk }]);
+  };
+
+  // Chargement : tous les setState se font après le await, jamais en synchrone
+  useEffect(() => {
+    let active = true;
+
+    (async () => {
+      try {
+        const p = await getMedical(personId);
+        if (!active) return;
+
+        const m = parseMaladies(p.maladies_chroniques);
+        setSelected(m.selected);
+        setOther(m.other);
+        setAllergies(p.allergies ?? '');
+        setDoctors(p.medecins);
+        setPersonName(personId ? p.person.prenom : null);
+
+        const next = { ...DEFAULT_TIMES };
+        (Object.keys(HABIT_COLUMN) as HabitKey[]).forEach((k) => {
+          const v = p.habitudes[HABIT_COLUMN[k]];
+          if (v) next[k] = v;
+        });
+        setTimes(next);
+      } catch (e) {
+        if (active) setLoadError(errMessage(e, 'Chargement impossible.'));
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [personId, reloadKey]);
+
+  // Bouton « Réessayer » : on repasse en chargement et on relance l'effet
+  const retry = () => {
+    setLoading(true);
+    setLoadError(null);
+    setReloadKey((k) => k + 1);
+  };
 
   const toggle = (c: string) =>
     setSelected((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
 
-  const onSave = () => {
-    // TODO : appeler le service de mise à jour du profil médical (avec person?.id si aidant)
+  const addDoctor = async () => {
+    if (!docName.trim() || docBusy) return;
+    setDocBusy(true);
+    try {
+      const d = await addMedecin(docName.trim(), docSpec.trim(), personId);
+      setDoctors((prev) => [...prev, d]);
+      setDocName('');
+      setDocSpec('');
+      setAdding(false);
+    } catch (e) {
+      notify('Erreur', errMessage(e, 'Ajout impossible.'));
+    } finally {
+      setDocBusy(false);
+    }
   };
+
+  const removeDoctor = async (id: string) => {
+    try {
+      await removeMedecin(id, personId);
+      setDoctors((prev) => prev.filter((d) => d.id !== id));
+    } catch (e) {
+      notify('Erreur', errMessage(e, 'Suppression impossible.'));
+    }
+  };
+
+  const onSave = async () => {
+    if (saving) return;
+
+    // Vérifie les heures avant d'envoyer
+    for (const h of HABITS) {
+      const v = times[h.key];
+      if (v && !TIME_REGEX.test(v)) {
+        notify('Heure invalide', `${h.label} : utilisez le format HH:MM (ex. 07:30).`);
+        return;
+      }
+    }
+
+    const habitudes = {} as HabitudesRepas;
+    (Object.keys(HABIT_COLUMN) as HabitKey[]).forEach((k) => {
+      habitudes[HABIT_COLUMN[k]] = times[k] || null;
+    });
+
+    setSaving(true);
+    try {
+      await saveMedical(
+        {
+          maladies_chroniques: buildMaladies(selected, other),
+          allergies: allergies.trim() || null,
+          habitudes,
+        },
+        personId
+      );
+      notify('Profil enregistré', 'Les informations médicales ont été mises à jour.', () =>
+        router.back()
+      );
+    } catch (e) {
+      notify('Erreur', errMessage(e, 'Enregistrement impossible.'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const title = personName ? `Profil médical · ${personName}` : 'Profil médical';
 
   return (
     <KeyboardAvoidingView
@@ -102,157 +258,187 @@ export default function MedicalProfileScreen() {
         ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}>
-        <SubPageHeader title={person ? `Profil médical · ${person.name}` : 'Profil médical'} />
+        <SubPageHeader title={title} />
 
-        {/* Bandeau confidentialité */}
-        <View style={styles.banner}>
-          <View style={styles.bannerIcon}>
-            <Ionicons name="lock-closed-outline" size={16} color={colors.logoBlue} />
+        {loading ? (
+          <View style={styles.center}>
+            <ActivityIndicator color={colors.logoBlue} />
           </View>
-          <Text style={styles.bannerText}>
-            {person
-              ? `Informations médicales de ${person.name}. Elles restent privées et ne sont visibles que par vous et ${person.name}.`
-              : 'Facultatif. Ces informations restent privées et ne sont pas partagées avec votre aidante.'}
-          </Text>
-        </View>
-
-        {/* Maladies chroniques */}
-        <SectionTitle>MALADIES CHRONIQUES</SectionTitle>
-        <View style={styles.card}>
-          <View style={styles.chips}>
-            {CONDITIONS.map((c) => {
-              const on = selected.includes(c);
-              return (
-                <Pressable
-                  key={c}
-                  onPress={() => toggle(c)}
-                  style={[styles.chip, on && styles.chipOn]}
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: on }}>
-                  <Text style={[styles.chipText, on && styles.chipTextOn]}>{c}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          <View style={styles.otherRow}>
-            <Text style={styles.otherLabel}>Autres :</Text>
-            <TextInput
-              style={[styles.input, styles.otherInput]}
-              value={other}
-              onChangeText={setOther}
-              placeholder="Ex : Myopie"
-              placeholderTextColor="#94A3B8"
-            />
-          </View>
-        </View>
-
-        {/* Allergies */}
-        <SectionTitle>ALLERGIES</SectionTitle>
-        <View style={styles.card}>
-          <Text style={styles.fieldLabel}>Allergies connues (médicaments, aliments)</Text>
-          <TextInput
-            style={[styles.input, { marginTop: 8 }]}
-            value={allergies}
-            onChangeText={setAllergies}
-            placeholder="Ex. pénicilline"
-            placeholderTextColor="#94A3B8"
-          />
-        </View>
-
-        {/* Mes médecins */}
-        <SectionTitle>{person ? 'SES MÉDECINS' : 'MES MÉDECINS'}</SectionTitle>
-        <View style={styles.card}>
-          {doctors.length === 0 && !adding && (
-            <Text style={styles.hint}>Aucun médecin ajouté pour le moment.</Text>
-          )}
-
-          {doctors.map((d, i) => (
-            <View key={d.id} style={[styles.docRow, i > 0 && styles.docRowBorder]}>
-              <View style={styles.docIcon}>
-                <Ionicons name="medkit-outline" size={16} color={colors.logoBlue} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.docName}>{d.name}</Text>
-                {d.specialty ? <Text style={styles.docSpec}>{d.specialty}</Text> : null}
-              </View>
-              <Pressable
-                hitSlop={8}
-                onPress={() => remove(d.id)}
-                accessibilityLabel="Supprimer ce médecin">
-                <Ionicons name="trash-outline" size={18} color="#DC2626" />
-              </Pressable>
-            </View>
-          ))}
-
-          {adding && (
-            <View style={styles.docForm}>
-              <TextInput
-                style={styles.input}
-                value={docName}
-                onChangeText={setDocName}
-                placeholder="Nom du médecin"
-                placeholderTextColor="#94A3B8"
-              />
-              <TextInput
-                style={styles.input}
-                value={docSpec}
-                onChangeText={setDocSpec}
-                placeholder="Spécialité (ex. Cardiologue)"
-                placeholderTextColor="#94A3B8"
-              />
-              <View style={styles.docActions}>
-                <Pressable style={styles.docCancel} onPress={() => setAdding(false)}>
-                  <Text style={styles.docCancelText}>Annuler</Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.docSave, !docName.trim() && { opacity: 0.5 }]}
-                  onPress={addDoctor}
-                  disabled={!docName.trim()}>
-                  <Text style={styles.docSaveText}>Ajouter</Text>
-                </Pressable>
-              </View>
-            </View>
-          )}
-
-          {!adding && (
-            <Pressable
-              style={styles.addDocBtn}
-              onPress={() => setAdding(true)}
-              accessibilityRole="button">
-              <Text style={styles.addDocText}>+ Ajouter un médecin</Text>
+        ) : loadError ? (
+          <View style={styles.center}>
+            <Text style={styles.errorText}>{loadError}</Text>
+            <Pressable style={styles.retryBtn} onPress={retry}>
+              <Text style={styles.retryText}>Réessayer</Text>
             </Pressable>
-          )}
-        </View>
+          </View>
+        ) : (
+          <>
+            {/* Bandeau confidentialité */}
+            <View style={styles.banner}>
+              <View style={styles.bannerIcon}>
+                <Ionicons name="lock-closed-outline" size={16} color={colors.logoBlue} />
+              </View>
+              <Text style={styles.bannerText}>
+                {isAidantView
+                  ? `Informations médicales de ${personName ?? 'cette personne'}. Elles restent privées et ne sont visibles que par vous et ${personName ?? 'cette personne'}.`
+                  : 'Facultatif. Ces informations restent privées et ne sont pas partagées avec votre aidante.'}
+              </Text>
+            </View>
 
-        {/* Habitudes */}
-        <SectionTitle>{person ? 'SES HABITUDES' : 'MES HABITUDES'}</SectionTitle>
-        <View style={styles.card}>
-          <Text style={styles.hint}>Elles servent à proposer des heures de rappel adaptées.</Text>
-          <View style={styles.habits}>
-            {HABITS.map((h) => (
-              <View key={h.key} style={styles.habit}>
-                <Text style={styles.fieldLabel}>{h.label}</Text>
+            {/* Maladies chroniques */}
+            <SectionTitle>MALADIES CHRONIQUES</SectionTitle>
+            <View style={styles.card}>
+              <View style={styles.chips}>
+                {CONDITIONS.map((c) => {
+                  const on = selected.includes(c);
+                  return (
+                    <Pressable
+                      key={c}
+                      onPress={() => toggle(c)}
+                      style={[styles.chip, on && styles.chipOn]}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: on }}>
+                      <Text style={[styles.chipText, on && styles.chipTextOn]}>{c}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <View style={styles.otherRow}>
+                <Text style={styles.otherLabel}>Autres :</Text>
                 <TextInput
-                  style={[styles.input, styles.timeInput]}
-                  value={times[h.key]}
-                  onChangeText={(t) => setTimes((p) => ({ ...p, [h.key]: formatTime(t) }))}
-                  keyboardType="number-pad"
-                  maxLength={5}
-                  placeholder="HH:MM"
+                  style={[styles.input, styles.otherInput]}
+                  value={other}
+                  onChangeText={setOther}
+                  placeholder="Ex : Myopie"
                   placeholderTextColor="#94A3B8"
                 />
               </View>
-            ))}
-          </View>
-        </View>
+            </View>
 
-        <Pressable
-          style={({ pressed }) => [styles.saveBtn, pressed && { opacity: 0.85 }]}
-          onPress={onSave}
-          accessibilityRole="button">
-          <Text style={styles.saveText}>Enregistrer</Text>
-        </Pressable>
+            {/* Allergies */}
+            <SectionTitle>ALLERGIES</SectionTitle>
+            <View style={styles.card}>
+              <Text style={styles.fieldLabel}>Allergies connues (médicaments, aliments)</Text>
+              <TextInput
+                style={[styles.input, { marginTop: 8 }]}
+                value={allergies}
+                onChangeText={setAllergies}
+                placeholder="Ex. pénicilline"
+                placeholderTextColor="#94A3B8"
+              />
+            </View>
+
+            {/* Médecins */}
+            <SectionTitle>{isAidantView ? 'SES MÉDECINS' : 'MES MÉDECINS'}</SectionTitle>
+            <View style={styles.card}>
+              {doctors.length === 0 && !adding && (
+                <Text style={styles.hint}>Aucun médecin ajouté pour le moment.</Text>
+              )}
+
+              {doctors.map((d, i) => (
+                <View key={d.id} style={[styles.docRow, i > 0 && styles.docRowBorder]}>
+                  <View style={styles.docIcon}>
+                    <Ionicons name="medkit-outline" size={16} color={colors.logoBlue} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.docName}>{d.nom}</Text>
+                    {d.specialite ? <Text style={styles.docSpec}>{d.specialite}</Text> : null}
+                  </View>
+                  <Pressable
+                    hitSlop={8}
+                    onPress={() => removeDoctor(d.id)}
+                    accessibilityLabel="Supprimer ce médecin">
+                    <Ionicons name="trash-outline" size={18} color="#DC2626" />
+                  </Pressable>
+                </View>
+              ))}
+
+              {adding && (
+                <View style={styles.docForm}>
+                  <TextInput
+                    style={styles.input}
+                    value={docName}
+                    onChangeText={setDocName}
+                    placeholder="Nom du médecin"
+                    placeholderTextColor="#94A3B8"
+                  />
+                  <TextInput
+                    style={styles.input}
+                    value={docSpec}
+                    onChangeText={setDocSpec}
+                    placeholder="Spécialité (ex. Cardiologue)"
+                    placeholderTextColor="#94A3B8"
+                  />
+                  <View style={styles.docActions}>
+                    <Pressable style={styles.docCancel} onPress={() => setAdding(false)}>
+                      <Text style={styles.docCancelText}>Annuler</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.docSave, (!docName.trim() || docBusy) && { opacity: 0.5 }]}
+                      onPress={addDoctor}
+                      disabled={!docName.trim() || docBusy}>
+                      {docBusy ? (
+                        <ActivityIndicator color="#FFFFFF" />
+                      ) : (
+                        <Text style={styles.docSaveText}>Ajouter</Text>
+                      )}
+                    </Pressable>
+                  </View>
+                </View>
+              )}
+
+              {!adding && (
+                <Pressable
+                  style={styles.addDocBtn}
+                  onPress={() => setAdding(true)}
+                  accessibilityRole="button">
+                  <Text style={styles.addDocText}>+ Ajouter un médecin</Text>
+                </Pressable>
+              )}
+            </View>
+
+            {/* Habitudes */}
+            <SectionTitle>{isAidantView ? 'SES HABITUDES' : 'MES HABITUDES'}</SectionTitle>
+            <View style={styles.card}>
+              <Text style={styles.hint}>
+                Elles servent à proposer des heures de rappel adaptées.
+              </Text>
+              <View style={styles.habits}>
+                {HABITS.map((h) => (
+                  <View key={h.key} style={styles.habit}>
+                    <Text style={styles.fieldLabel}>{h.label}</Text>
+                    <TextInput
+                      style={[styles.input, styles.timeInput]}
+                      value={times[h.key]}
+                      onChangeText={(t) => setTimes((p) => ({ ...p, [h.key]: formatTime(t) }))}
+                      keyboardType="number-pad"
+                      maxLength={5}
+                      placeholder="HH:MM"
+                      placeholderTextColor="#94A3B8"
+                    />
+                  </View>
+                ))}
+              </View>
+            </View>
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.saveBtn,
+                saving && { opacity: 0.6 },
+                pressed && { opacity: 0.85 },
+              ]}
+              onPress={onSave}
+              disabled={saving}
+              accessibilityRole="button">
+              {saving ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.saveText}>Enregistrer</Text>
+              )}
+            </Pressable>
+          </>
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -261,6 +447,18 @@ export default function MedicalProfileScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
   content: { paddingHorizontal: spacing.md, gap: spacing.sm },
+
+  center: { alignItems: 'center', justifyContent: 'center', gap: 12, paddingVertical: 48 },
+  errorText: { fontSize: 14, color: '#DC2626', textAlign: 'center' },
+  retryBtn: {
+    paddingHorizontal: 20,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: colors.logoBlue,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  retryText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
 
   banner: {
     flexDirection: 'row',

@@ -1,51 +1,64 @@
-import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect, useRouter, type Href } from 'expo-router';
 
 import { colors, fontSize, radius, spacing } from '@/theme';
+import { ApiError, getPatientsSuivis, type Patient } from '@/utils/api';
 
-import { SubPageHeader } from '../../../components/SubPageHeader';
-import PersonRow from '@/components/PersonRow';
-import { mockFollowed } from '../data/mockProfile';
-type Filter = 'all' | 'watch' | 'ok';
-
-const FILTERS: { key: Filter; label: string }[] = [
-  { key: 'all', label: 'Tous' },
-  { key: 'watch', label: 'À surveiller' },
-  { key: 'ok', label: 'À jour' },
-];
+import { SubPageHeader } from '@/components/SubPageHeader';
+import PatientRow from '@/components/PatientRow';
 
 export default function FollowedPeopleScreen() {
-  const [filter, setFilter] = useState<Filter>('all');
+  const router = useRouter();
+  const [people, setPeople] = useState<Patient[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
 
-  const list = useMemo(
-    () =>
-      mockFollowed.filter((p) => {
-        const matchFilter =
-          filter === 'all' || (filter === 'ok' ? p.status === 'ok' : p.status !== 'ok');
-        const matchQuery = p.name.toLowerCase().includes(query.trim().toLowerCase());
-        return matchFilter && matchQuery;
-      }),
-    [filter, query],
+  // Recharge la liste à chaque retour sur l'écran
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      (async () => {
+        try {
+          const list = await getPatientsSuivis();
+          if (active) {
+            setPeople(list);
+            setError(null);
+          }
+        } catch (e) {
+          if (active) setError(e instanceof ApiError ? e.message : 'Chargement impossible.');
+        } finally {
+          if (active) setLoading(false);
+        }
+      })();
+      return () => {
+        active = false;
+      };
+    }, [])
   );
+
+  const list = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return people;
+    return people.filter((p) => `${p.prenom} ${p.nom}`.toLowerCase().includes(q));
+  }, [people, query]);
+
+  const openMedical = (p: Patient) =>
+    router.push({ pathname: '/profil-medical', params: { personId: p.id } } as unknown as Href);
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <SubPageHeader title="Toutes les personnes" />
-
-      <View style={styles.chips}>
-        {FILTERS.map((f) => (
-          <Pressable
-            key={f.key}
-            onPress={() => setFilter(f.key)}
-            style={[styles.chip, filter === f.key && styles.chipActive]}>
-            <Text style={[styles.chipText, filter === f.key && styles.chipTextActive]}>
-              {f.label}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
 
       <TextInput
         value={query}
@@ -57,16 +70,42 @@ export default function FollowedPeopleScreen() {
 
       <View style={styles.countRow}>
         <Text style={styles.countLabel}>TOUTES LES PERSONNES</Text>
-        <Text style={styles.countLabel}>{list.length} résultats</Text>
+        <Text style={styles.countLabel}>
+          {list.length} {list.length > 1 ? 'résultats' : 'résultat'}
+        </Text>
       </View>
 
-      <View style={styles.card}>
-        {list.map((p, i) => (
-          <View key={p.id} style={i > 0 ? styles.sep : undefined}>
-            <PersonRow person={p} />
-          </View>
-        ))}
-      </View>
+      {loading ? (
+        <View style={styles.center}>
+          <ActivityIndicator color={colors.brand} />
+        </View>
+      ) : error ? (
+        <View style={styles.card}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      ) : list.length === 0 ? (
+        <View style={styles.card}>
+          <Text style={styles.emptyText}>
+            {people.length === 0 ? 'Aucune personne suivie pour le moment.' : 'Aucun résultat.'}
+          </Text>
+        </View>
+      ) : (
+        <View style={styles.card}>
+          {list.map((p, i) => (
+            <View key={p.id} style={i > 0 ? styles.sep : undefined}>
+              <PatientRow patient={p} onPress={() => openMedical(p)} />
+            </View>
+          ))}
+        </View>
+      )}
+
+      <Pressable
+        style={styles.addBtn}
+        onPress={() => router.push('/profil-ajouter-personne' as Href)}
+        accessibilityRole="button">
+        <Ionicons name="person-add-outline" size={18} color={colors.white} />
+        <Text style={styles.addBtnText}>Ajouter une personne à suivre</Text>
+      </Pressable>
 
       <Pressable style={styles.settings}>
         <View style={styles.settingsIcon}>
@@ -82,16 +121,6 @@ export default function FollowedPeopleScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.screenBackground },
   content: { padding: spacing.md, paddingBottom: 120 },
-  chips: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
-  chip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-    backgroundColor: colors.card,
-  },
-  chipActive: { backgroundColor: colors.brand },
-  chipText: { fontSize: fontSize.sm, fontWeight: '700', color: colors.textSoft },
-  chipTextActive: { color: colors.white },
   search: {
     backgroundColor: colors.card,
     borderRadius: radius.md,
@@ -115,8 +144,22 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     letterSpacing: 0.5,
   },
+  center: { paddingVertical: spacing.lg, alignItems: 'center' },
   card: { backgroundColor: colors.card, borderRadius: radius.md, overflow: 'hidden' },
   sep: { borderTopWidth: 1, borderTopColor: colors.border },
+  errorText: { padding: spacing.md, fontSize: fontSize.sm, color: '#DC2626' },
+  emptyText: { padding: spacing.md, fontSize: fontSize.sm, color: colors.textMuted },
+  addBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 50,
+    borderRadius: radius.md,
+    backgroundColor: colors.brand,
+    marginTop: spacing.md,
+  },
+  addBtnText: { color: colors.white, fontSize: fontSize.sm, fontWeight: '700' },
   settings: {
     flexDirection: 'row',
     alignItems: 'center',

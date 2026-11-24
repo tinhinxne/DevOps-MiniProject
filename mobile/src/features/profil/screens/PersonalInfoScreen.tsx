@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert,
   Image,
@@ -17,6 +17,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, spacing } from '@/theme';
+import { ApiError, getMyProfile, updateMyProfile } from '@/utils/api';
 import { SubPageHeader } from '../../../components/SubPageHeader';
 
 const BORDER = '#D6E6F5';
@@ -56,11 +57,17 @@ function getInitials(name: string) {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// AAAA-MM-JJ <-> JJ/MM/AAAA
+const toDisplayDate = (iso: string | null) => (iso ? iso.split('-').reverse().join('/') : '');
+const toIsoDate = (fr: string) => {
+  const [d, m, y] = fr.split('/');
+  return `${y}-${m}-${d}`;
+};
+
 export default function PersonalInfoScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  // TODO : initialiser avec les données de useProfile() puis envoyer à l'API dans onSave
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
@@ -68,8 +75,34 @@ export default function PersonalInfoScreen() {
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
-  // --- Photo ---
+  // --- Chargement du profil depuis l'API ---
+  useEffect(() => {
+    let active = true;
+    getMyProfile()
+      .then((p) => {
+        if (!active) return;
+        // à l'inscription, nom = prénom si aucun nom n'a été saisi : on évite le doublon
+        setFullName(p.nom && p.nom !== p.prenom ? `${p.prenom} ${p.nom}` : p.prenom);
+        setUsername(p.nom_util);
+        setEmail(p.email);
+        setPhone(p.telephone ?? '');
+        setBirthDate(toDisplayDate(p.date_naissance));
+      })
+      .catch((e) => {
+        if (active) setError(e instanceof ApiError ? e.message : 'Chargement impossible.');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // --- Photo (reste locale pour l'instant) ---
   const pickFromLibrary = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
@@ -112,16 +145,31 @@ export default function PersonalInfoScreen() {
   };
 
   // --- Enregistrement ---
-  const onSave = () => {
+  const onSave = async () => {
     if (!fullName.trim()) return setError('Saisissez votre nom complet.');
     if (username && username.length < 3) return setError('Le pseudo doit contenir au moins 3 caractères.');
-    if (!phone.trim() && !email.trim()) return setError('Renseignez un numéro de téléphone ou une adresse e-mail.');
+    if (!email.trim() || !EMAIL_RE.test(email.trim())) return setError('Adresse e-mail invalide.');
     if (phone.trim() && phone.replace(/\D/g, '').length < 8) return setError('Numéro de téléphone invalide.');
-    if (email.trim() && !EMAIL_RE.test(email.trim())) return setError('Adresse e-mail invalide.');
+    if (birthDate && birthDate.length < 10) return setError('Date de naissance incomplète.');
 
+    const [prenom, ...rest] = fullName.trim().split(/\s+/);
     setError(null);
-    // TODO : envoyer { photoUri, fullName, username, birthDate, phone, email } à l'API
-    Alert.alert('Informations enregistrées', undefined, [{ text: 'OK', onPress: () => router.back() }]);
+    setSaving(true);
+    try {
+      await updateMyProfile({
+        nom_util: username || undefined,
+        prenom,
+        nom: rest.join(' ') || undefined,
+        email: email.trim(),
+        telephone: phone.trim() || null,
+        date_naissance: birthDate ? toIsoDate(birthDate) : null,
+      });
+      Alert.alert('Informations enregistrées', undefined, [{ text: 'OK', onPress: () => router.back() }]);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Enregistrement impossible.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -242,10 +290,11 @@ export default function PersonalInfoScreen() {
         </View>
 
         <Pressable
-          style={({ pressed }) => [styles.saveBtn, pressed && { opacity: 0.85 }]}
+          style={({ pressed }) => [styles.saveBtn, (pressed || saving) && { opacity: 0.85 }]}
           onPress={onSave}
+          disabled={saving || loading}
           accessibilityRole="button">
-          <Text style={styles.saveText}>Enregistrer</Text>
+          <Text style={styles.saveText}>{saving ? 'Enregistrement…' : 'Enregistrer'}</Text>
         </Pressable>
       </ScrollView>
     </KeyboardAvoidingView>

@@ -15,4 +15,5 @@ export type UserProfile = {
   lastName: string;
   email: string;
   caregiver?: Caregiver;
+  roles?: UsageMode[];
 };

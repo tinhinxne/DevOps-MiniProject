@@ -89,11 +89,13 @@ CREATE TABLE proche_notifie (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     patient_id UUID NOT NULL REFERENCES patient(id) ON DELETE CASCADE,
     prenom     VARCHAR(100) NOT NULL,
-    contact    VARCHAR(255) NOT NULL,                  -- e-mail ou numéro WhatsApp
+    contact    VARCHAR(255) NOT NULL,
     canal      canal_envoi  NOT NULL,
-    relation   VARCHAR(50)
+    relation   VARCHAR(50),
+    statut     statut_invitation NOT NULL DEFAULT 'EN_ATTENTE',
+    token      UUID NOT NULL DEFAULT gen_random_uuid() UNIQUE,
+    repondu_le TIMESTAMPTZ
 );
-
 -- ---------------------------------------------------------------------
 --  3. Médecins, rendez-vous, notes
 -- ---------------------------------------------------------------------
