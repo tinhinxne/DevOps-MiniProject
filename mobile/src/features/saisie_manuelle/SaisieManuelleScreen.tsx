@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
   KeyboardAvoidingView,
@@ -14,19 +13,24 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, DateTimeField, Input } from '../../components';
 import { colors, fontSize, radius, spacing } from '../../theme';
 import { formatTime } from '../../utils/datetime';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
-  addManualMedication,
+  
   FORMES,
   FREQUENCES,
   getHabitMoments,
   Moment,
 } from './mock';
 import { SelectField } from './SelectField';
+import { creerTraitement } from '../../utils/api';
+import { momentDepuisLabel, ymd } from '../../utils/traitement';
 
 const DEFAULT_CUSTOM_TIME = new Date(2000, 0, 1, 15, 30);
 
 export function SaisieManuelleScreen() {
   const router = useRouter();
+  const { ordonnanceId, patientId } = useLocalSearchParams<{ ordonnanceId?: string; patientId?: string }>();
+  const [saving, setSaving] = useState(false);
   const [name, setName] = useState('');
   const [dosage, setDosage] = useState('');
   const [forme, setForme] = useState(FORMES[0]);
@@ -63,38 +67,37 @@ export function SaisieManuelleScreen() {
     setSelectedIds((current) => [...current, id]);
   };
 
-  const handleSave = () => {
+    const handleSave = async () => {
     const days = parseInt(duration, 10);
-    if (!name.trim()) {
-      setError('Indique le nom du médicament.');
-      return;
-    }
-    if (selectedIds.length === 0) {
-      setError('Choisis au moins un moment de prise.');
-      return;
-    }
-    if (!days || days < 1) {
-      setError('Indique une durée en jours.');
-      return;
-    }
-    const times = moments
+    if (!name.trim()) return setError('Indique le nom du médicament.');
+    if (selectedIds.length === 0) return setError('Choisis au moins un moment de prise.');
+    if (!days || days < 1) return setError('Indique une durée en jours.');
+    if (!patientId) return setError('Patient inconnu : ouvre cet écran depuis une ordonnance.');
+
+    const choisis = moments
       .filter((m) => selectedIds.includes(m.id))
-      .map((m) => m.time)
-      .sort();
-    addManualMedication({
-      name: name.trim(),
-      dosage: dosage.trim(),
-      forme,
-      times,
-      frequence,
-      durationDays: days,
-      quantity,
-      startDate: startDate.toISOString(),
-      instructions: instructions.trim(),
-    });
-    setError('');
-    // TODO: aller à la liste des ordonnances quand elle lira les médicaments enregistrés
-        router.replace('/ordonnances');
+      .sort((a, b) => a.time.localeCompare(b.time));
+    try {
+      setSaving(true);
+      setError('');
+      await creerTraitement({
+        patientId, ordonnanceId,
+        nom: name.trim(),
+        dosage: dosage.trim(),
+        forme, frequence,
+        dureeJours: days,
+        quantite: quantity,
+        dateDebut: ymd(startDate),
+        instructions: instructions.trim(),
+        saisieManuelle: true,
+        rappels: choisis.map((m) => ({ moment: momentDepuisLabel(m.label), heure: m.time })),
+      });
+      router.replace('/ordonnances');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erreur inconnue');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (

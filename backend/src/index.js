@@ -1,16 +1,20 @@
+require('dotenv').config(); // doit rester tout en haut
 const express = require('express');
 const cors = require('cors');
 const pool = require('./db');
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '12mb' }));
 app.use('/auth', require('./routes/auth'));
 app.use('/patients', require('./routes/patients'));
+app.use('/ordonnances', require('./routes/ordonnances'));
+app.use('/traitements', require('./routes/traitements'));
 app.use('/profile', require('./routes/profile'));
 app.use('/aidants', require('./routes/aidants'));
 app.use('/medical', require('./routes/medical'));
 app.get('/health', async (req, res) => {
+a
   try {
     await pool.query('SELECT 1');
     res.json({ status: 'ok', db: 'connected' });

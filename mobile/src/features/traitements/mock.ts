@@ -1,5 +1,7 @@
 export type Ordonnance = {
   id: string;
+  titre?: string;
+note?: string;
   delivreeLe: string;
   expireLe: string;
   statut: 'active' | 'ancienne';

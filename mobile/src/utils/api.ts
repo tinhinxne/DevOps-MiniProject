@@ -53,8 +53,29 @@ type AuthResponse = {
   user: { id: string; nom_util: string; prenom: string; email: string };
   role?: string;
   roles?: string[];
+  patientId?: string; // renseigné pour l'espace PATIENT
   patients?: Patient[];
 };
+
+// --- Patient choisi, mémorisé sur le téléphone ---
+const SELECTED_KEY = 'selected_patient';
+
+export async function getSelectedPatient(): Promise<SelectedPatient | null> {
+  const raw = await SecureStore.getItemAsync(SELECTED_KEY);
+  return raw ? (JSON.parse(raw) as SelectedPatient) : null;
+}
+export const setSelectedPatient = (p: SelectedPatient) =>
+  SecureStore.setItemAsync(SELECTED_KEY, JSON.stringify(p));
+export const clearSelectedPatient = () => SecureStore.deleteItemAsync(SELECTED_KEY);
+
+// Après une connexion : un PATIENT est son propre patient (sélection automatique).
+// Un AIDANT choisit lui-même le patient suivi (écran de sélection).
+async function initSelectedPatient(data: AuthResponse) {
+  await clearSelectedPatient();
+  if (data.role === 'PATIENT' && data.patientId) {
+    await setSelectedPatient({ id: data.patientId, nom: '', prenom: data.user.prenom });
+  }
+}
 
 export async function login(identifiant: string, password: string, mode: Mode) {
   const data: AuthResponse = await apiFetch('/auth/login', {
@@ -63,7 +84,7 @@ export async function login(identifiant: string, password: string, mode: Mode) {
   });
   await SecureStore.setItemAsync('token', data.token);
   await setMode(mode);
-  await clearSelectedPatient(); // le choix est refait à chaque connexion
+  await initSelectedPatient(data);
   return data;
 }
 
@@ -89,7 +110,7 @@ export async function register(
   });
   await SecureStore.setItemAsync('token', data.token);
   await setMode(mode);
-  await clearSelectedPatient();
+  await initSelectedPatient(data);
   return data;
 }
 
@@ -105,7 +126,7 @@ export async function addSpace(mode: Mode, patients?: NewPatient[]) {
   });
   await SecureStore.setItemAsync('token', data.token);
   await setMode(mode);
-  await clearSelectedPatient();
+  await initSelectedPatient(data);
   return data;
 }
 
@@ -124,17 +145,6 @@ export async function addPatientsSuivis(patients: NewPatient[]): Promise<Patient
   return data.patients;
 }
 
-// --- Patient choisi, mémorisé sur le téléphone ---
-const SELECTED_KEY = 'selected_patient';
-
-export async function getSelectedPatient(): Promise<SelectedPatient | null> {
-  const raw = await SecureStore.getItemAsync(SELECTED_KEY);
-  return raw ? (JSON.parse(raw) as SelectedPatient) : null;
-}
-export const setSelectedPatient = (p: SelectedPatient) =>
-  SecureStore.setItemAsync(SELECTED_KEY, JSON.stringify(p));
-export const clearSelectedPatient = () => SecureStore.deleteItemAsync(SELECTED_KEY);
-
 // --- Compte mémorisé sur le téléphone (identifiant seulement, jamais le mot de passe) ---
 export type SavedAccount = { email: string; prenom?: string; nom_util?: string };
 const SAVED_KEY = 'saved_account';
@@ -146,6 +156,98 @@ export async function getSavedAccount(): Promise<SavedAccount | null> {
 export const saveAccount = (a: SavedAccount) =>
   SecureStore.setItemAsync(SAVED_KEY, JSON.stringify(a));
 export const forgetAccount = () => SecureStore.deleteItemAsync(SAVED_KEY);
+
+// --- Patient courant (celui choisi sur le téléphone) ---
+async function patientCourantId(): Promise<string> {
+  const p = await getSelectedPatient();
+  if (!p) throw new ApiError('Aucun patient sélectionné.', 0, 'PATIENT_MANQUANT');
+  return p.id;
+}
+
+// --- Ordonnances ---
+export type OrdonnanceApi = {
+  id: string;
+  patientId: string;
+  dateEmission: string | null;
+  dateExpiration: string | null;
+  photoUrl: string;
+  nbMedicaments?: number;
+  titre?: string | null;
+  note?: string | null;
+};
+
+// dateEmission / dateExpiration au format AAAA-MM-JJ
+export async function creerOrdonnance(body: {
+  imageBase64: string;
+  dateEmission?: string;
+  dateExpiration?: string;
+  patientId?: string;
+  titre?: string;
+  note?: string;
+}): Promise<OrdonnanceApi> {
+  const data = await apiFetch('/ordonnances', {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: JSON.stringify({ ...body, patientId: body.patientId ?? (await patientCourantId()) }),
+  });
+  return data.ordonnance;
+}
+
+// Liste des ordonnances d'un patient (GET)
+export async function listerOrdonnances(patientId?: string): Promise<OrdonnanceApi[]> {
+  const id = patientId ?? (await patientCourantId());
+  const data = await apiFetch(`/ordonnances?patientId=${encodeURIComponent(id)}`, {
+    headers: await authHeaders(),
+  });
+  return data.ordonnances;
+}
+
+export type TraitementApi = {
+  id: string;
+  ordonnanceId: string | null;
+  nom: string;
+  dosage: string | null;
+  frequence: string | null;
+  dureeJours: number | null;
+  dateDebut: string;
+  instructions: string | null;
+  quantite: number;
+  stockRestant: number | null;
+  seuilStockFaible: number;
+  rappels: { moment: string; heure: string }[];
+};
+
+export async function listerTraitements(patientId?: string): Promise<TraitementApi[]> {
+  const id = patientId ?? (await patientCourantId());
+  const data = await apiFetch(`/traitements?patientId=${encodeURIComponent(id)}`, {
+    headers: await authHeaders(),
+  });
+  return data.traitements;
+}
+
+// --- Traitements ---
+export async function creerTraitement(body: Record<string, unknown>) {
+  const data = await apiFetch('/traitements', {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: JSON.stringify({ ...body, patientId: body.patientId ?? (await patientCourantId()) }),
+  });
+  return data.traitement;
+}
+
+export async function renouvelerOrdonnance(id: string, dateExpiration: string) {
+  const token = await SecureStore.getItemAsync('token');
+  const res = await fetch(`${API_URL}/ordonnances/${id}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token ?? ''}`,
+    },
+    body: JSON.stringify({ dateExpiration }),
+  });
+  if (!res.ok) throw new Error('Renouvellement impossible.');
+  return res.json();
+}
 
 // --- Profil (infos personnelles) ---
 export type ProfileData = {

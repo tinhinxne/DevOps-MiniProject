@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Href, Stack, useRouter } from 'expo-router';
+import { Href, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
   KeyboardAvoidingView,
@@ -25,6 +25,15 @@ export function AjoutMed() {
 const norm = (s: string) =>
   s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const router = useRouter();
+  const { ordonnanceId, patientId } = useLocalSearchParams<{
+  ordonnanceId?: string;
+  patientId?: string;
+}>();
+// à transmettre aux écrans suivants (vide si on arrive sans ordonnance)
+const ctx = {
+  ...(ordonnanceId ? { ordonnanceId } : {}),
+  ...(patientId ? { patientId } : {}),
+};
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -56,7 +65,7 @@ const norm = (s: string) =>
   if (!med) return;
   router.push({
     pathname: '/configurer-prise',
-    params: { nom: med.n, dosage: med.d, dci: med.g, forme: med.f },
+    params: { nom: med.n, dosage: med.d, dci: med.g, forme: med.f, ...ctx },
   } as unknown as Href);
 };
 
@@ -89,10 +98,6 @@ const norm = (s: string) =>
             </View>
           </View>
 
-          {/* Scanner */}
-          <Pressable style={styles.scan} onPress={() => {}}>
-            <Text style={styles.scanText}>Scanner une ordonnance</Text>
-          </Pressable>
 
           {/* Recherche */}
           <Input
@@ -131,12 +136,12 @@ const norm = (s: string) =>
               })}
 
               <View style={styles.sep} />
-              <Pressable onPress={() => router.push('/saisie-manuelle')} style={styles.manual}>
+              <Pressable onPress={() => router.push({ pathname: '/saisie-manuelle', params: ctx } as unknown as Href)}style={styles.manual}>
                 <Text style={styles.manualText}>Introuvable ? Saisir manuellement</Text>
               </Pressable>
             </Card>
           ) : query.trim().length > 0 ? (
-            <Pressable onPress={() => router.push('/saisie-manuelle')} style={styles.manual}>
+            <Pressable onPress={() => router.push({ pathname: '/saisie-manuelle', params: ctx } as unknown as Href)} style={styles.manual}>
               <Text style={styles.manualText}>Aucun résultat. Saisir manuellement</Text>
             </Pressable>
           ) : null}

@@ -106,11 +106,13 @@ CREATE TABLE note (
 --  3. Ordonnances, médicaments (copie en lecture seule du serveur), traitements
 -- ---------------------------------------------------------------------
 CREATE TABLE ordonnance (
-    id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+    id              TEXT PRIMARY KEY,
     patient_id      TEXT NOT NULL REFERENCES patient(id) ON DELETE CASCADE,
-    date_emission   TEXT,
+    titre           TEXT,
+    note            TEXT,
+    date_emission   TEXT,   -- 'YYYY-MM-DD'
     photo_url       TEXT,
-    date_expiration TEXT,
+    date_expiration TEXT,   -- 'YYYY-MM-DD'
     CHECK (date_expiration IS NULL OR date_emission IS NULL OR date_expiration >= date_emission)
 );
 
