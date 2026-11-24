@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback , useState } from 'react';
 import {
   Alert,
   Image,
@@ -20,7 +20,12 @@ import { Card } from '@/components/Card';
 import { SegmentedTabs } from '@/components/SegmentedTabs';
 import { SubPageHeader } from '@/components/SubPageHeader';
 import { colors, fontSize, radius, spacing } from '@/theme';
-import { creerOrdonnance, listerOrdonnances, listerTraitements } from '@/utils/api';
+import {
+  creerOrdonnance,
+  listerOrdonnances,
+  listerTraitements,
+  renouvelerOrdonnance,
+} from '@/utils/api';
 import type { TraitementApi } from '@/utils/api';
 import { ymd } from '@/utils/traitement';
 
@@ -77,6 +82,21 @@ const PERIODES: { value: Periode; label: string; jours?: number }[] = [
   { value: '30j', label: '30 jours', jours: 30 },
   { value: '3m', label: '3 mois', jours: 90 },
 ];
+type Unite = 'jours' | 'semaines' | 'mois';
+
+const UNITES: { value: Unite; label: string }[] = [
+  { value: 'jours', label: 'Jours' },
+  { value: 'semaines', label: 'Semaines' },
+  { value: 'mois', label: 'Mois' },
+];
+
+// ajoute n jours / semaines / mois à une date
+const ajouterDuree = (base: Date, n: number, u: Unite) => {
+  const d = new Date(base);
+  if (u === 'mois') d.setMonth(d.getMonth() + n);
+  else d.setDate(d.getDate() + n * (u === 'semaines' ? 7 : 1));
+  return d;
+};
 
 // nombre de jours écoulés depuis une date au format JJ/MM/AAAA
 function joursDepuis(dateFr: string): number {
@@ -101,7 +121,11 @@ export function TraitementsScreen() {
   const [brouillon, setBrouillon] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [titre, setTitre] = useState('');
   const [note, setNote] = useState('');
-  const [mois, setMois] = useState(3);
+ const [dureeNb, setDureeNb] = useState('1');
+const [dureeUnite, setDureeUnite] = useState<Unite>('mois');
+  const [renouvId, setRenouvId] = useState<string | null>(null);
+  const [renouvNb, setRenouvNb] = useState('1');
+  const [renouvUnite, setRenouvUnite] = useState<Unite>('mois');
 
   const charger = useCallback(async () => {
     try {
@@ -162,10 +186,10 @@ export function TraitementsScreen() {
   const detail = liste.find((o) => o.id === detailId);
 
   // On transmet l'ordonnance affichée (UUID du serveur) jusqu'à /configurer-prise
-  const ajouter = () =>
+   const ajouter = () =>
     router.push({
       pathname: '/ajout-med',
-      params: { ordonnanceId: detail?.id },
+      params: detail ? { ordonnanceId: detail.id } : {},
     } as unknown as Href);
 
   const ouvrirMed = (id: string) =>
@@ -188,18 +212,24 @@ export function TraitementsScreen() {
       base64: true,
     });
     if (res.canceled) return;
-    setBrouillon(res.assets[0]);
+       setBrouillon(res.assets[0]);
     setTitre('');
     setNote('');
-    setMois(3);
+    setDureeNb('1');
+    setDureeUnite('mois');
+  
   };
 
   // Étape 2 : envoi au serveur
-  const enregistrer = async () => {
+   const enregistrer = async () => {
     if (!brouillon || envoi) return;
+    const n = parseInt(dureeNb, 10);
+    if (!n || n < 1) {
+      Alert.alert('Durée invalide', 'Saisis une durée supérieure à 0.');
+      return;
+    }
     const aujourdhui = new Date();
-    const expire = new Date(aujourdhui);
-    expire.setMonth(expire.getMonth() + mois);
+    const expire = ajouterDuree(aujourdhui, n, dureeUnite);
     const fmt = (d: Date) => d.toLocaleDateString('fr-FR');
     try {
       setEnvoi(true);
@@ -226,6 +256,42 @@ export function TraitementsScreen() {
       Alert.alert(
         'Envoi impossible',
         e instanceof Error ? e.message : "La photo n'a pas pu être enregistrée.",
+      );
+    } finally {
+      setEnvoi(false);
+    }
+  };
+    const ouvrirRenouvellement = (id: string) => {
+    setRenouvNb('1');
+    setRenouvUnite('mois');
+    setRenouvId(id);
+  };
+
+  const confirmerRenouvellement = async () => {
+    const n = parseInt(renouvNb, 10);
+    if (!n || n < 1) {
+      Alert.alert('Durée invalide', 'Saisis une durée supérieure à 0.');
+      return;
+    }
+    if (!renouvId || envoi) return;
+    const base = new Date();
+    base.setHours(0, 0, 0, 0);
+    const nouvelleExpiration = ajouterDuree(base, n, renouvUnite);
+    try {
+      setEnvoi(true);
+      await renouvelerOrdonnance(renouvId, ymd(nouvelleExpiration));
+      setListe((l) =>
+        l.map((x) =>
+          x.id === renouvId
+            ? { ...x, expireLe: fr(ymd(nouvelleExpiration)), statut: 'active' }
+            : x,
+        ),
+      );
+      setRenouvId(null);
+    } catch (e) {
+      Alert.alert(
+        'Renouvellement impossible',
+        e instanceof Error ? e.message : 'Réessaie plus tard.',
       );
     } finally {
       setEnvoi(false);
@@ -269,20 +335,13 @@ export function TraitementsScreen() {
               placeholderTextColor={colors.textLabel}
               style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
             />
-            <Text style={styles.medPoso}>Valable pendant</Text>
-            <View style={styles.chips}>
-              {[1, 3, 6, 12].map((n) => (
-                <Pressable
-                  key={n}
-                  onPress={() => setMois(n)}
-                  accessibilityRole="button"
-                  style={[styles.chip, mois === n && styles.chipActive]}>
-                  <Text style={[styles.chipText, mois === n && styles.chipTextActive]}>
-                    {n} mois
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
+                       <Text style={styles.medPoso}>Valable pendant</Text>
+            <DureeSaisie
+              nb={dureeNb}
+              unite={dureeUnite}
+              onNb={setDureeNb}
+              onUnite={setDureeUnite}
+            />
             <Pressable
               onPress={enregistrer}
               disabled={envoi}
@@ -347,16 +406,7 @@ export function TraitementsScreen() {
                               Valable jusqu&apos;au : {o.expireLe}
                             </Text>
                           </View>
-                          <ExpirationBadge expireLe={o.expireLe} />
-                          {joursRestants(o.expireLe) <= 30 && (
- <Pressable
-  onPress={photographier}
-  accessibilityRole="button"
-  style={styles.renewBtn}>
-  <Ionicons name="refresh" size={14} color={colors.white} />
-  <Text style={styles.renewText}>Renouveler</Text>
-</Pressable>
-)}
+                                                <ExpirationBadge expireLe={o.expireLe} />
                         </>
                       )}
                       <Pressable
@@ -379,11 +429,11 @@ export function TraitementsScreen() {
               </View>
               {anciennes.map((o) => (
                 <AncienneCard
-  key={o.id}
-  ordonnance={o}
-  onVoir={() => setDetailId(o.id)}
-  onRenouveler={photographier}
-/>
+                  key={o.id}
+                  ordonnance={o}
+                  onVoir={() => setDetailId(o.id)}
+                  onRenouveler={() => ouvrirRenouvellement(o.id)}
+                />
               ))}
               {anciennes.length === 0 && (
                 <Text style={styles.medPoso}>Aucune ordonnance pour cette période.</Text>
@@ -511,6 +561,38 @@ export function TraitementsScreen() {
           )}
         </Pressable>
       </Modal>
+
+      <Modal
+        visible={!!renouvId}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRenouvId(null)}>
+        <View style={styles.overlay}>
+          <Card style={styles.renewCard}>
+            <Text style={styles.detailTitle}>Renouveler l&apos;ordonnance</Text>
+            <Text style={styles.medPoso}>Pour combien de temps ?</Text>
+            <DureeSaisie
+              nb={renouvNb}
+              unite={renouvUnite}
+              onNb={setRenouvNb}
+              onUnite={setRenouvUnite}
+            />
+            <Pressable
+              onPress={confirmerRenouvellement}
+              disabled={envoi}
+              accessibilityRole="button"
+              style={[styles.addBtn, envoi && { opacity: 0.6 }]}>
+              <Text style={styles.addText}>{envoi ? 'Envoi...' : 'Renouveler'}</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setRenouvId(null)}
+              accessibilityRole="button"
+              style={styles.photoBtn}>
+              <Text style={styles.photoBtnText}>Annuler</Text>
+            </Pressable>
+          </Card>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -575,17 +657,27 @@ function Recherche({
 }
 
 function Miniature({ grande, uri }: { grande?: boolean; uri?: string }) {
+  // key = uri : si l'adresse change, l'état interne est remis à zéro
+  return <MiniatureImage key={uri ?? 'vide'} grande={grande} uri={uri} />;
+}
+
+function MiniatureImage({ grande, uri }: { grande?: boolean; uri?: string }) {
   const taille = grande ? 72 : 64;
   const [ko, setKo] = useState(false);
+  const [essai, setEssai] = useState(0);
+
   return (
     <View style={[styles.miniature, { width: taille, height: taille, overflow: 'hidden' }]}>
       {uri && !ko ? (
         <Image
+          key={essai}
           source={imgSource(uri)}
           style={{ width: taille, height: taille }}
           onError={(e) => {
             console.log('IMG KO', uri, e.nativeEvent.error);
-            setKo(true);
+            // un 2e essai automatique avant d'abandonner
+            if (essai < 1) setEssai(essai + 1);
+            else setKo(true);
           }}
         />
       ) : (
@@ -594,15 +686,8 @@ function Miniature({ grande, uri }: { grande?: boolean; uri?: string }) {
     </View>
   );
 }
-
-function AncienneCard({
-  ordonnance,
-  onVoir,
-  onRenouveler,
-}: {
-  ordonnance: Ordonnance;
-  onVoir: () => void;
-  onRenouveler: () => void;
+function AncienneCard({ ordonnance, onVoir, onRenouveler }: {
+  ordonnance: Ordonnance; onVoir: () => void; onRenouveler: () => void;
 }) {
   return (
     <Card style={styles.ancienne}>
@@ -611,18 +696,14 @@ function AncienneCard({
         <Text style={styles.ancienneTitre}>
           {ordonnance.titre || `Ordonnance du ${ordonnance.delivreeLe}`}
         </Text>
-                <View style={styles.sectionRow}>
+        <View style={styles.sectionRow}>
           <Ionicons name="calendar-outline" size={14} color={colors.textLabel} />
-          <Text style={styles.medPoso}>Expire le {ordonnance.expireLe}</Text>
-                <View style={styles.sectionRow}>
-          <Ionicons name="calendar-outline" size={14} color={colors.textLabel} />
-          <Text style={styles.medPoso}>Expire le {ordonnance.expireLe}</Text>
+          <Text style={styles.medPoso}>Expirée le {ordonnance.expireLe}</Text>
         </View>
         <Pressable onPress={onRenouveler} accessibilityRole="button" style={styles.renewBtn}>
           <Ionicons name="refresh" size={14} color={colors.white} />
           <Text style={styles.renewText}>Renouveler</Text>
         </Pressable>
-      </View>
       </View>
       <Pressable onPress={onVoir} accessibilityRole="button" style={styles.voirBtn}>
         <Text style={styles.voirText}>Voir</Text>
@@ -692,7 +773,45 @@ function BoutonAjout({ onPress }: { onPress: () => void }) {
     </Pressable>
   );
 }
-
+function DureeSaisie({
+  nb,
+  unite,
+  onNb,
+  onUnite,
+}: {
+  nb: string;
+  unite: Unite;
+  onNb: (v: string) => void;
+  onUnite: (u: Unite) => void;
+}) {
+  return (
+    <View style={{ gap: spacing.sm }}>
+      <TextInput
+        value={nb}
+        onChangeText={(t) => onNb(t.replace(/[^0-9]/g, ''))}
+        keyboardType="number-pad"
+        maxLength={3}
+        placeholder="Ex : 5"
+        placeholderTextColor={colors.textLabel}
+        style={styles.input}
+        accessibilityLabel="Durée"
+      />
+      <View style={styles.chips}>
+        {UNITES.map((u) => (
+          <Pressable
+            key={u.value}
+            onPress={() => onUnite(u.value)}
+            accessibilityRole="button"
+            style={[styles.chip, unite === u.value && styles.chipActive]}>
+            <Text style={[styles.chipText, unite === u.value && styles.chipTextActive]}>
+              {u.label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.pageBackground },
   content: { padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xl },
@@ -841,5 +960,12 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     backgroundColor: colors.brandDeep,
   },
-  renewText: { fontSize: fontSize.sm, fontWeight: '700', color: colors.white },
+   renewText: { fontSize: fontSize.sm, fontWeight: '700', color: colors.white },
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  renewCard: { gap: spacing.md },
 });

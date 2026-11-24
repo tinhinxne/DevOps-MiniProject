@@ -40,7 +40,7 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(data.error || `Erreur ${res.status}`, res.status, data.code);
-  return data;
+   return data;  
 }
 
 async function authHeaders() {
@@ -229,4 +229,17 @@ export async function creerTraitement(body: Record<string, unknown>) {
     body: JSON.stringify({ ...body, patientId: body.patientId ?? (await patientCourantId()) }),
   });
   return data.traitement;
+}
+export async function renouvelerOrdonnance(id: string, dateExpiration: string) {
+  const token = await SecureStore.getItemAsync('token');
+  const res = await fetch(`${API_URL}/ordonnances/${id}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token ?? ''}`,
+    },
+    body: JSON.stringify({ dateExpiration }),
+  });
+  if (!res.ok) throw new Error('Renouvellement impossible.');
+  return res.json();
 }
