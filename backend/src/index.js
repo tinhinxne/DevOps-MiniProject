@@ -10,7 +10,11 @@ app.use('/auth', require('./routes/auth'));
 app.use('/patients', require('./routes/patients'));
 app.use('/ordonnances', require('./routes/ordonnances'));
 app.use('/traitements', require('./routes/traitements'));
+app.use('/profile', require('./routes/profile'));
+app.use('/aidants', require('./routes/aidants'));
+app.use('/medical', require('./routes/medical'));
 app.get('/health', async (req, res) => {
+a
   try {
     await pool.query('SELECT 1');
     res.json({ status: 'ok', db: 'connected' });
