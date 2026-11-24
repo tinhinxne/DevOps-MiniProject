@@ -1,10 +1,55 @@
+import { useEffect, useState } from 'react';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Card } from '../../components';
 import { colors, fontSize, radius, spacing } from '../../theme';
-import { getMedicamentDetail } from './mock';
+import { listerOrdonnances, listerTraitements } from '@/utils/api';
+import type { TraitementApi } from '@/utils/api';
+
+const MOMENT: Record<string, string> = {
+  REVEIL: 'Réveil',
+  PETIT_DEJ: 'Petit-déj',
+  DEJEUNER: 'Déjeuner',
+  DINER: 'Dîner',
+  COUCHER: 'Coucher',
+  PERSO: 'Perso',
+};
+const fr = (d: Date) => d.toLocaleDateString('fr-FR');
+const frIso = (s?: string | null) => (s ? s.slice(0, 10).split('-').reverse().join('/') : '');
+
+function versDetail(t: TraitementApi, origine: string) {
+  const total = t.dureeJours ?? 1;
+  const debut = new Date(`${t.dateDebut.slice(0, 10)}T00:00:00`);
+  const fin = new Date(debut);
+  fin.setDate(fin.getDate() + total - 1);
+  const auj = new Date();
+  auj.setHours(0, 0, 0, 0);
+  const jour = Math.floor((auj.getTime() - debut.getTime()) / 86400000) + 1;
+  const qte = t.quantite ?? 1;
+  const prevu = total * t.rappels.length * qte;
+  return {
+    name: t.nom,
+    dosageForme: [t.dosage, t.frequence].filter(Boolean).join(' · '),
+    origine,
+    status: jour > total ? 'Terminé' : 'En cours',
+    prises: t.rappels.map((r, i) => ({
+      id: String(i),
+      label: MOMENT[r.moment] ?? r.moment,
+      time: r.heure,
+      quantity: `${qte} cp`,
+    })),
+    dayCurrent: Math.min(Math.max(jour, 1), total),
+    dayTotal: total,
+    startDate: fr(debut),
+    endDate: fr(fin),
+    stockLabel:
+      t.stockRestant == null ? 'Stock non renseigné' : `${t.stockRestant} comprimés restants`,
+    stockPercent: t.stockRestant == null || prevu === 0 ? 0 : (t.stockRestant / prevu) * 100,
+    instructions: t.instructions || 'Aucune instruction.',
+  };
+}
 
 function ProgressBar({ percent, color }: { percent: number; color: string }) {
   const value = Math.min(100, Math.max(0, percent));
@@ -18,8 +63,27 @@ function ProgressBar({ percent, color }: { percent: number; color: string }) {
 export function DetailMedicamentScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
-  const med = getMedicamentDetail(id);
-  const progress = Math.round((med.dayCurrent / med.dayTotal) * 100);
+  const [med, setMed] = useState<ReturnType<typeof versDetail> | null>(null);
+  const [erreur, setErreur] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [trait, ords] = await Promise.all([listerTraitements(), listerOrdonnances()]);
+        const t = trait.find((x) => x.id === id);
+        if (!t) return setErreur('Médicament introuvable.');
+        const o = ords.find((x) => x.id === t.ordonnanceId);
+        setMed(
+          versDetail(
+            t,
+            o ? `Ordonnance : ${o.titre || `du ${frIso(o.dateEmission)}`}` : 'Saisie manuelle',
+          ),
+        );
+      } catch (e) {
+        setErreur(e instanceof Error ? e.message : 'Chargement impossible.');
+      }
+    })();
+  }, [id]);
 
   const handleDelete = () => {
     Alert.alert('Supprimer ce médicament ?', 'Cette action est définitive.', [
@@ -27,11 +91,22 @@ export function DetailMedicamentScreen() {
       {
         text: 'Supprimer',
         style: 'destructive',
-        // TODO: supprimer en base (SQLite) quand elle sera prête
+        // TODO: route DELETE /traitements/:id à créer côté backend
         onPress: () => router.back(),
       },
     ]);
   };
+
+  if (!med) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <Text style={{ padding: spacing.lg, color: erreur ? colors.danger : colors.textLabel }}>
+          {erreur ?? 'Chargement...'}
+        </Text>
+      </SafeAreaView>
+    );
+  }
+  const progress = Math.round((med.dayCurrent / med.dayTotal) * 100);
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -48,7 +123,7 @@ export function DetailMedicamentScreen() {
           </Pressable>
           <View style={styles.flex}>
             <Text style={styles.title}>Détail du médicament</Text>
-            <Text style={styles.subtitle}>{`Ordonnance du ${med.ordonnanceDate}`}</Text>
+            <Text style={styles.subtitle}>{med.origine}</Text>
           </View>
         </View>
 

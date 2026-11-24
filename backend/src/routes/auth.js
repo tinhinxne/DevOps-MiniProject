@@ -13,6 +13,12 @@ const fail = (res, status, code, error) => res.status(status).json({ code, error
 const signToken = (id) => jwt.sign({ sub: id }, process.env.JWT_SECRET, { expiresIn: '30d' });
 const publicUser = (u) => ({ id: u.id, nom_util: u.nom_util, prenom: u.prenom, email: u.email });
 
+// id de la fiche patient liée à un utilisateur (undefined si aucune)
+async function patientIdDe(db, userId) {
+  const { rows } = await db.query('SELECT id FROM patient WHERE utilisateur_id = $1', [userId]);
+  return rows[0]?.id;
+}
+
 // Ajoute un espace (rôle) à un utilisateur.
 // PATIENT -> crée aussi sa fiche patient + habitudes_repas.
 async function addRole(client, user, role, nom) {
@@ -35,9 +41,6 @@ async function addRole(client, user, role, nom) {
 }
 
 // POST /auth/register  { nom_util, prenom, nom?, email, password, role, patients? }
-//  - e-mail inconnu : crée le compte + l'espace demandé
-//  - e-mail connu   : vérifie le mot de passe, ajoute SEULEMENT l'espace manquant
-//  - role AIDANT    : patients = [{ nom, prenom, lien }] obligatoire
 router.post('/register', async (req, res) => {
   const { nom_util, prenom, nom, email, password, role, patients } = req.body || {};
 
@@ -58,7 +61,6 @@ router.post('/register', async (req, res) => {
     let user = found.rows[0];
 
     if (user) {
-      // Compte existant : on ajoute un espace
       if (!(await bcrypt.compare(password, user.mdp_hash))) {
         await client.query('ROLLBACK');
         return fail(res, 401, 'IDENTIFIANTS_INVALIDES', 'Mot de passe incorrect pour ce compte');
@@ -72,7 +74,6 @@ router.post('/register', async (req, res) => {
         return fail(res, 409, 'ROLE_DEJA_EXISTANT', 'Cet espace existe déjà : connectez-vous');
       }
     } else {
-      // Nouveau compte
       if (!nom_util || !prenom) {
         await client.query('ROLLBACK');
         return fail(res, 400, 'CHAMPS_MANQUANTS', 'nom_util, prenom, email et password requis');
@@ -98,8 +99,11 @@ router.post('/register', async (req, res) => {
 
     await addRole(client, user, role, nom);
     const suivis = role === 'AIDANT' ? await addPatientsSuivis(client, user.id, patients) : undefined;
+    const patientId = role === 'PATIENT' ? await patientIdDe(client, user.id) : undefined;
     await client.query('COMMIT');
-    return res.status(201).json({ token: signToken(user.id), user: publicUser(user), role, patients: suivis });
+    return res
+      .status(201)
+      .json({ token: signToken(user.id), user: publicUser(user), role, patientId, patients: suivis });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     if (err.code === '23505') {
@@ -143,7 +147,8 @@ router.post('/login', async (req, res) => {
       });
     }
     const patients = role === 'AIDANT' ? await listPatientsSuivis(pool, user.id) : undefined;
-    return res.json({ token: signToken(user.id), user: publicUser(user), roles, role, patients });
+    const patientId = role === 'PATIENT' ? await patientIdDe(pool, user.id) : undefined;
+    return res.json({ token: signToken(user.id), user: publicUser(user), roles, role, patientId, patients });
   } catch (err) {
     console.error('login error:', err.message);
     return fail(res, 500, 'ERREUR_SERVEUR', 'Erreur serveur');
@@ -151,7 +156,6 @@ router.post('/login', async (req, res) => {
 });
 
 // POST /auth/add-role  (Authorization: Bearer <token>)  { role, patients? }
-// Utilisateur déjà connecté : ajoute l'espace manquant sans mot de passe.
 router.post('/add-role', async (req, res) => {
   const { role, patients } = req.body || {};
   if (!ROLES.includes(role)) return fail(res, 400, 'ROLE_INVALIDE', 'Rôle invalide');
@@ -187,8 +191,11 @@ router.post('/add-role', async (req, res) => {
     }
     await addRole(client, user, role);
     const suivis = role === 'AIDANT' ? await addPatientsSuivis(client, user.id, patients) : undefined;
+    const patientId = role === 'PATIENT' ? await patientIdDe(client, user.id) : undefined;
     await client.query('COMMIT');
-    return res.status(201).json({ token: signToken(user.id), user: publicUser(user), role, patients: suivis });
+    return res
+      .status(201)
+      .json({ token: signToken(user.id), user: publicUser(user), role, patientId, patients: suivis });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('add-role error:', err.message);

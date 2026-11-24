@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
+
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -11,18 +12,20 @@ import {
   Text,
   View,
 } from 'react-native';
-import { Alert } from 'react-native'; // ou ajoute Alert à ton import react-native existant
 import { medicaments } from '../traitements/mock';
 import { detecterInteractions, Interaction } from './interactions';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, DateTimeField, Input } from '../../components';
 import { colors, fontSize, radius, spacing } from '../../theme';
 import { formatTime } from '../../utils/datetime';
-import { addManualMedication, FREQUENCES, getHabitMoments, Moment } from '../saisie_manuelle/mock';
+import { FREQUENCES, getHabitMoments, Moment } from '../saisie_manuelle/mock';
+import { creerTraitement } from '../../utils/api';
+import { momentDepuisLabel, ymd } from '../../utils/traitement';
 import { SelectField } from '../saisie_manuelle/SelectField';
 
 const DEFAULT_CUSTOM_TIME = new Date(2000, 0, 1, 15, 30);
 const fmtDate = (d: Date) => d.toLocaleDateString('fr-FR');
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function ConfigurerPriseScreen() {
   const router = useRouter();
@@ -32,6 +35,8 @@ export function ConfigurerPriseScreen() {
     dosage?: string;
     dci?: string;
     forme?: string;
+    ordonnanceId?: string;
+    patientId?: string;
   }>();
   const nom = params.nom ?? 'Doliprane';
   const dosage = params.dosage ?? '500 mg';
@@ -46,13 +51,14 @@ export function ConfigurerPriseScreen() {
   const [days, setDays] = useState(7);
   const [startDate, setStartDate] = useState<Date>(new Date());
   const [instructions, setInstructions] = useState('');
-  const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
   const interactions = detecterInteractions(
-  { nom, dci },
-  medicaments.map((m) => ({ nom: m.nom })),
-);
-const alerte = interactions[0];
+    { nom, dci },
+    medicaments.map((m) => ({ nom: m.nom })),
+  );
+  const alerte = interactions[0];
   const plural = (n: number) => (n > 1 && !forme.endsWith('s') ? `${forme}s` : forme);
   const prisesParJour = selectedIds.length;
   const total = prisesParJour * quantity * days;
@@ -74,49 +80,59 @@ const alerte = interactions[0];
     setSelectedIds((cur) => [...cur, id]);
   };
 
-  const choisirPhoto = async () => {
-    const res = await ImagePicker.launchImageLibraryAsync({ quality: 0.8 });
-    if (!res.canceled) setPhotoUri(res.assets[0].uri);
+  const enregistrer = async () => {
+    const choisis = moments
+      .filter((m) => selectedIds.includes(m.id))
+      .sort((a, b) => a.time.localeCompare(b.time));
+
+    // La colonne ordonnance_id est un UUID : on n'envoie que les vrais ids du serveur.
+    const ordonnanceId =
+      params.ordonnanceId && UUID_RE.test(params.ordonnanceId) ? params.ordonnanceId : undefined;
+
+    try {
+      setSaving(true);
+      setError('');
+      // patientId absent => creerTraitement prend le patient sélectionné sur le téléphone
+      await creerTraitement({
+        patientId: params.patientId, // optionnel
+        ordonnanceId,
+        nom,
+        dci,
+        dosage,
+        forme,
+        frequence,
+        dureeJours: days,
+        quantite: quantity,
+        dateDebut: ymd(startDate),
+        instructions: instructions.trim(),
+        rappels: choisis.map((m) => ({ moment: momentDepuisLabel(m.label), heure: m.time })),
+      });
+      router.replace('/ordonnances');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erreur inconnue');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const enregistrer = () => {
-  const times = moments
-    .filter((m) => selectedIds.includes(m.id))
-    .map((m) => m.time)
-    .sort();
-  addManualMedication({
-    name: nom,
-    dosage,
-    forme,
-    times,
-    frequence,
-    durationDays: days,
-    quantity,
-    startDate: startDate.toISOString(),
-    instructions: instructions.trim(),
-  });
-  setError('');
-  router.replace('/ordonnances');
-};
-
-const handleSave = () => {
-  if (selectedIds.length === 0) {
-    setError('Choisis au moins un moment de prise.');
-    return;
-  }
-  if (alerte?.gravite === 'rouge') {
-    Alert.alert(
-      'Interaction grave',
-      `${alerte.message}\n\nVoulez-vous quand même l'ajouter ?`,
-      [
-        { text: 'Annuler', style: 'cancel' },
-        { text: 'Ajouter quand même', style: 'destructive', onPress: enregistrer },
-      ],
-    );
-    return;
-  }
-  enregistrer();
-};
+  const handleSave = () => {
+    if (selectedIds.length === 0) {
+      setError('Choisis au moins un moment de prise.');
+      return;
+    }
+    if (alerte?.gravite === 'rouge') {
+      Alert.alert(
+        'Interaction grave',
+        `${alerte.message}\n\nVoulez-vous quand même l'ajouter ?`,
+        [
+          { text: 'Annuler', style: 'cancel' },
+          { text: 'Ajouter quand même', style: 'destructive', onPress: enregistrer },
+        ],
+      );
+      return;
+    }
+    enregistrer();
+  };
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -252,23 +268,15 @@ const handleSave = () => {
             onChangeText={setInstructions}
             placeholder="Ex. : pendant les repas"
           />
-
-          <Pressable onPress={choisirPhoto} accessibilityRole="button" hitSlop={6}>
-            <Text style={styles.photoLink}>
-              {photoUri
-                ? "✓ Photo d'ordonnance associée (changer)"
-                : "+ Associer une photo d'ordonnance (facultatif)"}
-            </Text>
-          </Pressable>
         </ScrollView>
 
         <View style={styles.footer}>
-  {alerte ? (
-    <AlerteInteraction interaction={alerte} autres={interactions.length - 1} />
-  ) : null}
-  {error ? <Text style={styles.error}>{error}</Text> : null}
-  <Button title="Ajouter au traitement" variant="deep" onPress={handleSave} />
-</View>
+          {alerte ? (
+            <AlerteInteraction interaction={alerte} autres={interactions.length - 1} />
+          ) : null}
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          <Button title="Ajouter au traitement" variant="deep" onPress={handleSave} disabled={saving} />
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -295,6 +303,7 @@ function Stepper({
     </View>
   );
 }
+
 const ALERTE_STYLE = {
   jaune: { fond: colors.tintWarning, bord: colors.warning, texte: '#92400E', icone: 'information-circle', titre: 'Interaction à surveiller' },
   orange: { fond: '#FFEDD5', bord: '#FB923C', texte: '#9A3412', icone: 'warning', titre: 'Interaction importante' },
@@ -322,6 +331,7 @@ function AlerteInteraction({ interaction, autres }: { interaction: Interaction; 
     </View>
   );
 }
+
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.pageBackground },
   flex: { flex: 1 },
@@ -341,15 +351,15 @@ const styles = StyleSheet.create({
   title: { fontSize: fontSize.lg, fontWeight: '700', color: colors.brandDeep },
   subtitle: { fontSize: fontSize.sm, color: colors.textLabel },
   alerte: {
-  flexDirection: 'row',
-  alignItems: 'flex-start',
-  gap: spacing.sm,
-  padding: spacing.md,
-  borderRadius: radius.md,
-  borderWidth: 1.5,
-},
-alerteTitre: { fontSize: fontSize.sm, fontWeight: '700' },
-alerteTexte: { fontSize: fontSize.xs },
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+  },
+  alerteTitre: { fontSize: fontSize.sm, fontWeight: '700' },
+  alerteTexte: { fontSize: fontSize.xs },
   medCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -383,7 +393,7 @@ alerteTexte: { fontSize: fontSize.xs },
   change: { fontSize: fontSize.sm, fontWeight: '700', color: colors.brandDeep },
 
   row: { flexDirection: 'row', gap: spacing.md },
-label: { fontSize: fontSize.sm, fontWeight: '600', color: colors.brandDeep },
+  label: { fontSize: fontSize.sm, fontWeight: '600', color: colors.brandDeep },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   chip: {
     width: '31%',
@@ -431,8 +441,6 @@ label: { fontSize: fontSize.sm, fontWeight: '600', color: colors.brandDeep },
   },
   summaryTitle: { fontSize: fontSize.sm, fontWeight: '700', color: colors.brandDeep },
   summaryText: { fontSize: fontSize.sm, color: colors.textLabel },
-
-  photoLink: { fontSize: fontSize.sm, fontWeight: '600', color: colors.brandDeep },
 
   footer: { padding: spacing.lg, gap: spacing.sm },
   error: { color: colors.danger, fontSize: fontSize.sm },

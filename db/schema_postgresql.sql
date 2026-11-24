@@ -133,6 +133,8 @@ CREATE TABLE note (
 CREATE TABLE ordonnance (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     patient_id      UUID NOT NULL REFERENCES patient(id) ON DELETE CASCADE,
+    titre           VARCHAR(100),
+    note            TEXT,
     date_emission   DATE,
     photo_url       TEXT,
     date_expiration DATE,
