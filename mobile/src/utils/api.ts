@@ -14,7 +14,7 @@ export const LIENS: { value: Lien; label: string }[] = [
   { value: 'AMI', label: 'Ami(e)' },
   { value: 'AUTRE', label: 'Autre' },
 ];
-export type NewPatient = { nom: string; prenom: string; lien: Lien };
+export type NewPatient = { nom: string; prenom: string; lien: Lien; lien_precision?: string };
 export type Patient = NewPatient & { id: string };
 export type SelectedPatient = { id: string; nom: string; prenom: string };
 
@@ -40,7 +40,7 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(data.error || `Erreur ${res.status}`, res.status, data.code);
-   return data;  
+  return data;
 }
 
 async function authHeaders() {
@@ -83,6 +83,7 @@ export async function login(identifiant: string, password: string, mode: Mode) {
     body: JSON.stringify({ identifiant, password, role: toRole(mode) }),
   });
   await SecureStore.setItemAsync('token', data.token);
+  await setMode(mode);
   await initSelectedPatient(data);
   return data;
 }
@@ -108,6 +109,7 @@ export async function register(
     }),
   });
   await SecureStore.setItemAsync('token', data.token);
+  await setMode(mode);
   await initSelectedPatient(data);
   return data;
 }
@@ -123,6 +125,7 @@ export async function addSpace(mode: Mode, patients?: NewPatient[]) {
     }),
   });
   await SecureStore.setItemAsync('token', data.token);
+  await setMode(mode);
   await initSelectedPatient(data);
   return data;
 }
@@ -170,7 +173,7 @@ export type OrdonnanceApi = {
   photoUrl: string;
   nbMedicaments?: number;
   titre?: string | null;
-note?: string | null;
+  note?: string | null;
 };
 
 // dateEmission / dateExpiration au format AAAA-MM-JJ
@@ -180,7 +183,7 @@ export async function creerOrdonnance(body: {
   dateExpiration?: string;
   patientId?: string;
   titre?: string;
-note?: string;
+  note?: string;
 }): Promise<OrdonnanceApi> {
   const data = await apiFetch('/ordonnances', {
     method: 'POST',
@@ -198,6 +201,7 @@ export async function listerOrdonnances(patientId?: string): Promise<OrdonnanceA
   });
   return data.ordonnances;
 }
+
 export type TraitementApi = {
   id: string;
   ordonnanceId: string | null;
@@ -230,6 +234,7 @@ export async function creerTraitement(body: Record<string, unknown>) {
   });
   return data.traitement;
 }
+
 export async function renouvelerOrdonnance(id: string, dateExpiration: string) {
   const token = await SecureStore.getItemAsync('token');
   const res = await fetch(`${API_URL}/ordonnances/${id}`, {
@@ -242,4 +247,135 @@ export async function renouvelerOrdonnance(id: string, dateExpiration: string) {
   });
   if (!res.ok) throw new Error('Renouvellement impossible.');
   return res.json();
+}
+
+// --- Profil (infos personnelles) ---
+export type ProfileData = {
+  id: string;
+  nom_util: string;
+  prenom: string;
+  nom: string | null;
+  email: string;
+  telephone: string | null;
+  date_naissance: string | null; // AAAA-MM-JJ
+  roles: ('PATIENT' | 'AIDANT')[];
+};
+
+export type ProfileUpdate = {
+  nom_util?: string;
+  prenom: string;
+  nom?: string;
+  email: string;
+  telephone: string | null;
+  date_naissance: string | null;
+};
+
+export async function getMyProfile(): Promise<ProfileData> {
+  const data = await apiFetch('/profile', { headers: await authHeaders() });
+  return data.profile;
+}
+
+export async function updateMyProfile(body: ProfileUpdate): Promise<ProfileData> {
+  const data = await apiFetch('/profile', {
+    method: 'PUT',
+    headers: await authHeaders(),
+    body: JSON.stringify(body),
+  });
+  return data.profile;
+}
+
+// --- Mode courant (patient / aidant), mémorisé sur le téléphone ---
+const MODE_KEY = 'mode';
+
+export async function getMode(): Promise<Mode> {
+  const m = await SecureStore.getItemAsync(MODE_KEY);
+  return m === 'aidant' ? 'aidant' : 'patient';
+}
+export const setMode = (m: Mode) => SecureStore.setItemAsync(MODE_KEY, m);
+
+// --- Invitation d'un aidant (e-mail ou WhatsApp) ---
+export type InviteCanal = 'EMAIL' | 'WHATSAPP';
+
+export type NewInvitation = {
+  prenom: string;
+  contact: string; // e-mail, ou numéro au format international sans « + » (213541648814)
+  canal: InviteCanal;
+  lien: string; // Sœur, Parent, Ami(e) ou texte libre
+  seuil_oublis: number; // nombre d'oublis consécutifs avant l'alerte
+};
+
+export type InvitationResult = {
+  canal: InviteCanal;
+  invite_url?: string; // lien d'invitation, renvoyé par le back (utilisé pour WhatsApp)
+};
+
+export async function inviteAidant(body: NewInvitation): Promise<InvitationResult> {
+  const data = await apiFetch('/aidants/invitations', {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: JSON.stringify(body),
+  });
+  return data.invitation;
+}
+
+// --- Profil médical (patient ou personne suivie) ---
+export type Medecin = { id: string; nom: string; specialite: string | null };
+
+export type HabitudesRepas = {
+  reveil: string | null;
+  petit_dejeuner: string | null;
+  dejeuner: string | null;
+  diner: string | null;
+  coucher: string | null;
+};
+
+export type MedicalProfile = {
+  person: { prenom: string; nom: string };
+  maladies_chroniques: string | null;
+  allergies: string | null;
+  habitudes: HabitudesRepas;
+  medecins: Medecin[];
+};
+
+export type MedicalUpdate = {
+  maladies_chroniques: string | null;
+  allergies: string | null;
+  habitudes: HabitudesRepas;
+};
+
+// personId absent = son propre profil ; présent = une personne accompagnée
+const personQuery = (personId?: string) =>
+  personId ? `?personId=${encodeURIComponent(personId)}` : '';
+
+export async function getMedical(personId?: string): Promise<MedicalProfile> {
+  const data = await apiFetch(`/medical${personQuery(personId)}`, { headers: await authHeaders() });
+  return data.profile;
+}
+
+export async function saveMedical(body: MedicalUpdate, personId?: string): Promise<void> {
+  await apiFetch(`/medical${personQuery(personId)}`, {
+    method: 'PUT',
+    headers: await authHeaders(),
+    body: JSON.stringify(body),
+  });
+}
+
+export async function addMedecin(
+  nom: string,
+  specialite: string,
+  personId?: string
+): Promise<Medecin> {
+  const data = await apiFetch(`/medical/medecins${personQuery(personId)}`, {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: JSON.stringify({ nom, specialite }),
+  });
+  return data.medecin;
+}
+
+export async function removeMedecin(id: string, personId?: string): Promise<void> {
+  await apiFetch(`/medical/medecins/${encodeURIComponent(id)}${personQuery(personId)}`, {
+    method: 'DELETE',
+    headers: await authHeaders(),
+  });
 }
