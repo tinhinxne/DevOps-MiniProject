@@ -21,4 +21,19 @@ async function ordonnanceAutorisee(client, userId, ordonnanceId) {
   return rows[0] ?? null;
 }
 
-module.exports = { patientAutorise, traitementAutorise, ordonnanceAutorisee };
+async function rendezVousAutorise(client, userId, rdvId) {
+  const { rows } = await client.query(
+    `SELECT r.* FROM rendez_vous r JOIN patient p ON p.id = r.patient_id
+      WHERE r.id = $2 AND ${PATIENT_OK}`, [userId, rdvId]);
+  return rows[0] ?? null;
+}
+
+
+async function noteAutorisee(client, userId, noteId) {
+  const { rows } = await client.query(
+    `SELECT n.* FROM note n JOIN patient p ON p.id = n.patient_id
+      WHERE n.id = $2 AND ${PATIENT_OK}`, [userId, noteId]);
+  return rows[0] ?? null;
+}
+
+module.exports = {patientAutorise,traitementAutorise,ordonnanceAutorisee,rendezVousAutorise,noteAutorisee,};

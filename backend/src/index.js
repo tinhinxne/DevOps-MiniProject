@@ -13,8 +13,10 @@ app.use('/traitements', require('./routes/traitements'));
 app.use('/profile', require('./routes/profile'));
 app.use('/aidants', require('./routes/aidants'));
 app.use('/medical', require('./routes/medical'));
+app.use('/rendez-vous', require('./routes/rendezVous'));
+app.use('/notes', require('./routes/notes'));
 app.get('/health', async (req, res) => {
-a
+
   try {
     await pool.query('SELECT 1');
     res.json({ status: 'ok', db: 'connected' });
