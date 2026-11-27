@@ -1,6 +1,7 @@
 import { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 import { apiFetch } from '../../utils/api';
 import { clearToken, getToken, saveToken } from '../../utils/session';
+import { viderRappels } from '../../utils/rappels';
 
 type User = { id: string; nom_util: string; prenom: string; email: string };
 type AuthData = { token: string; user: User };
@@ -44,10 +45,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await saveToken(token);
     setUser(user);
   };
-  const signOut = async () => {
-    await clearToken();
-    setUser(null);
-  };
+ const signOut = async () => {
+  await viderRappels();
+  await clearToken();
+  setUser(null);
+};
 
   return (
     <AuthContext.Provider value={{ user, loading, signIn, signOut }}>

@@ -174,6 +174,8 @@ export type OrdonnanceApi = {
   nbMedicaments?: number;
   titre?: string | null;
   note?: string | null;
+    medecinId?: string | null;
+  medecinNom?: string | null;
 };
 
 // dateEmission / dateExpiration au format AAAA-MM-JJ
@@ -184,6 +186,7 @@ export async function creerOrdonnance(body: {
   patientId?: string;
   titre?: string;
   note?: string;
+  medecinId: string;
 }): Promise<OrdonnanceApi> {
   const data = await apiFetch('/ordonnances', {
     method: 'POST',
@@ -212,7 +215,7 @@ export type TraitementApi = {
   dateDebut: string;
   instructions: string | null;
   quantite: number;
-  stockRestant: number | null;
+  stockRestant?: number;
   seuilStockFaible: number;
   rappels: { moment: string; heure: string }[];
 };
@@ -375,6 +378,36 @@ export async function addMedecin(
 
 export async function removeMedecin(id: string, personId?: string): Promise<void> {
   await apiFetch(`/medical/medecins/${encodeURIComponent(id)}${personQuery(personId)}`, {
+    method: 'DELETE',
+    headers: await authHeaders(),
+  });
+}
+// personId seulement en mode aidant (sinon 403 : sa propre fiche n'est pas dans accompagnement)
+async function personIdCourant(): Promise<string | undefined> {
+  if ((await getMode()) !== 'aidant') return undefined;
+  return (await getSelectedPatient())?.id;
+}
+
+export async function listerMedecins(): Promise<Medecin[]> {
+  return (await getMedical(await personIdCourant())).medecins;
+}
+
+export async function creerMedecin(nom: string, specialite: string): Promise<Medecin> {
+  return addMedecin(nom, specialite, await personIdCourant());
+}
+
+
+export async function modifierTraitement(id: string, body: Record<string, unknown>) {
+  const data = await apiFetch(`/traitements/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: await authHeaders(),
+    body: JSON.stringify(body),
+  });
+  return data.traitement;
+}
+
+export async function supprimerTraitement(id: string): Promise<void> {
+  await apiFetch(`/traitements/${encodeURIComponent(id)}`, {
     method: 'DELETE',
     headers: await authHeaders(),
   });

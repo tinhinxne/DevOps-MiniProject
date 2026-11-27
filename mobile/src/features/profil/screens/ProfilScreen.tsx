@@ -19,6 +19,7 @@ import { useMode } from '../hooks/useMode';
 import { useProfile } from '../hooks/useProfile';
 import type { UsageMode } from '../types';
 
+
 export default function ProfilScreen() {
   const router = useRouter();
   const { profile, refresh } = useProfile();

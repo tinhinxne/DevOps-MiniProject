@@ -9,6 +9,12 @@ import { DayStrip } from './DayStrip';
 import { PriseItem } from './PriseItem';
 import { Button, Card, NotifBell } from '../../components';
 
+import { useDoses } from '../../utils/useRappels'; // adapte le chemin
+
+ 
+
+
+
 type Props = { mode: 'patient' | 'aidant'; patientName?: string };
 
 // TODO: remplacer par les vraies données (SQLite / API)
@@ -22,7 +28,8 @@ export function SuiviPrisesScreen({ mode, patientName = 'Miria' }: Props) {
   const router = useRouter();
   const [date, setDate] = useState(new Date());
   const aidant = mode === 'aidant';
-
+    
+const { nbEnAttente } = useDoses();
   const dateLabel = date.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
 
   return (
@@ -34,7 +41,10 @@ export function SuiviPrisesScreen({ mode, patientName = 'Miria' }: Props) {
             <Text style={styles.title}>Suivi des prises</Text>
             {aidant ? <Text style={styles.subtitle}>Vous accompagnez {patientName}</Text> : null}
           </View>
-          <NotifBell onPress={() => router.push('/prise-reminder')} unread />
+         <NotifBell
+  unread={nbEnAttente > 0}
+  onPress={() => router.push('/boite-notifications' as never)}
+/>
         </View>
 
         {/* Bandeau patient accompagné (mode aidant) */}

@@ -48,6 +48,13 @@ router.post('/', async (req, res) => {
   const source = b.source === 'ORDONNANCE' ? 'ORDONNANCE' : 'MANUEL';
   const manuel = b.saisieManuelle === true;
 
+  // Stock = boîtes × unités par boîte (calculé côté app)
+  const unitesStock = Number(b.stockRestant);
+  const stockRestant =
+    Number.isInteger(unitesStock) && unitesStock > 0 && unitesStock <= 100000
+      ? unitesStock
+      : null;
+
   const client = await pool.connect();
   try {
     const patientId = await patientAutorise(client, req.userId, b.patientId);
@@ -82,13 +89,14 @@ router.post('/', async (req, res) => {
     ({ rows } = await client.query(
       `INSERT INTO traitement
          (patient_id, ordonnance_id, medicament_id, source, dosage, frequence,
-          duree_jours, date_debut, instruction, quantite_par_prise)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+          duree_jours, date_debut, instruction, quantite_par_prise, stock_restant)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
       [
         patientId, b.ordonnanceId ?? null, medicamentId, source, dosage,
         String(b.frequence ?? '').trim() || null, duree,
         debut.toISOString().slice(0, 10),
         String(b.instructions ?? '').trim() || null, quantite,
+        stockRestant,
       ],
     ));
     const traitement = rows[0];
@@ -113,6 +121,7 @@ router.post('/', async (req, res) => {
     client.release();
   }
 });
+
 // GET /traitements?patientId=...  → tous les traitements (avec ou sans ordonnance)
 router.get('/', async (req, res) => {
   const client = await pool.connect();
@@ -156,6 +165,126 @@ router.get('/', async (req, res) => {
     if (e.code === '22P02')
       return res.status(404).json({ code: 'PATIENT_INTROUVABLE', error: 'Patient introuvable' });
     console.error('list traitements error:', e.message);
+    res.status(500).json({ code: 'ERREUR_SERVEUR', error: 'Erreur serveur' });
+  } finally {
+    client.release();
+  }
+});
+// Retrouve le traitement et vérifie que l'utilisateur a le droit d'y toucher
+async function traitementAutorise(client, utilisateurId, traitementId) {
+  const { rows } = await client.query('SELECT * FROM traitement WHERE id = $1', [traitementId]);
+  const t = rows[0];
+  if (!t) return { statut: 404 };
+  const ok = await patientAutorise(client, utilisateurId, t.patient_id);
+  return ok ? { statut: 200, traitement: t } : { statut: 403 };
+}
+
+const refus = (res, statut) =>
+  statut === 403
+    ? res.status(403).json({ code: 'PATIENT_NON_AUTORISE', error: 'Patient non autorisé' })
+    : res.status(404).json({ code: 'TRAITEMENT_INTROUVABLE', error: 'Traitement introuvable' });
+
+// DELETE /traitements/:id
+router.delete('/:id', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { statut } = await traitementAutorise(client, req.userId, req.params.id);
+    if (statut !== 200) return refus(res, statut);
+
+    await client.query('BEGIN');
+    await client.query('DELETE FROM rappel WHERE traitement_id = $1', [req.params.id]);
+    await client.query('DELETE FROM traitement WHERE id = $1', [req.params.id]);
+    await client.query('COMMIT');
+    res.json({ ok: true });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    if (e.code === '22P02') return refus(res, 404);
+    if (e.code === '23503')
+      return res.status(409).json({
+        code: 'TRAITEMENT_UTILISE',
+        error: 'Ce traitement est lié à d\u2019autres données',
+      });
+    console.error('delete traitement error:', e.message);
+    res.status(500).json({ code: 'ERREUR_SERVEUR', error: 'Erreur serveur' });
+  } finally {
+    client.release();
+  }
+});
+
+// PATCH /traitements/:id  (seuls les champs envoyés sont modifiés)
+router.patch('/:id', async (req, res) => {
+  const b = req.body ?? {};
+  const client = await pool.connect();
+  try {
+    const { statut, traitement: actuel } = await traitementAutorise(
+      client, req.userId, req.params.id,
+    );
+    if (statut !== 200) return refus(res, statut);
+
+    const duree = b.dureeJours !== undefined ? Number(b.dureeJours) : actuel.duree_jours;
+    const quantite = b.quantite !== undefined ? Number(b.quantite) : actuel.quantite_par_prise;
+    if (!Number.isInteger(duree) || duree < 1 || duree > 365)
+      return bad(res, 'DUREE_INVALIDE', 'Durée invalide');
+    if (!Number.isInteger(quantite) || quantite < 1 || quantite > 10)
+      return bad(res, 'QUANTITE_INVALIDE', 'Quantité invalide');
+
+    let dateDebut = actuel.date_debut;
+    if (b.dateDebut !== undefined) {
+      const d = new Date(b.dateDebut);
+      if (Number.isNaN(d.getTime())) return bad(res, 'DATE_INVALIDE', 'Date de début invalide');
+      dateDebut = d.toISOString().slice(0, 10);
+    }
+
+    let stock = actuel.stock_restant;
+    if (b.stockRestant !== undefined) {
+      const n = Number(b.stockRestant);
+      stock = b.stockRestant === null || b.stockRestant === '' ? null
+        : Number.isInteger(n) && n >= 0 && n <= 100000 ? n : undefined;
+      if (stock === undefined) return bad(res, 'STOCK_INVALIDE', 'Stock invalide');
+    }
+
+    const texte = (v, ancien) =>
+      v === undefined ? ancien : String(v ?? '').trim() || null;
+
+    let rappels = null;
+    if (b.rappels !== undefined) {
+      rappels = Array.isArray(b.rappels) ? b.rappels : [];
+      if (rappels.length === 0 ||
+          !rappels.every((r) => MOMENTS.includes(r.moment) && HEURE.test(r.heure)))
+        return bad(res, 'RAPPELS_INVALIDES', 'Rappels invalides');
+    }
+
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      `UPDATE traitement
+          SET dosage = $1, frequence = $2, duree_jours = $3, date_debut = $4,
+              instruction = $5, quantite_par_prise = $6, stock_restant = $7
+        WHERE id = $8
+        RETURNING *`,
+      [
+        texte(b.dosage, actuel.dosage),
+        texte(b.frequence, actuel.frequence),
+        duree, dateDebut,
+        texte(b.instructions, actuel.instruction),
+        quantite, stock, req.params.id,
+      ],
+    );
+
+    if (rappels) {
+      await client.query('DELETE FROM rappel WHERE traitement_id = $1', [req.params.id]);
+      for (const r of rappels) {
+        await client.query(
+          'INSERT INTO rappel (traitement_id, moment, heure) VALUES ($1,$2,$3)',
+          [req.params.id, r.moment, r.heure],
+        );
+      }
+    }
+    await client.query('COMMIT');
+    res.json({ traitement: rows[0] });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    if (e.code === '22P02') return refus(res, 404);
+    console.error('patch traitement error:', e.message);
     res.status(500).json({ code: 'ERREUR_SERVEUR', error: 'Erreur serveur' });
   } finally {
     client.release();

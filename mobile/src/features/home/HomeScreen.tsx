@@ -8,24 +8,13 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { useState, useCallback } from 'react';
 import { getMyProfile, getSelectedPatient, type SelectedPatient } from '../../utils/api';
 import { NotifBell } from '../../components/NotifBell';
+import { BadgeEtat, BoutonsPrise } from '../../components/DoseActions';
+import { useDoses } from '../../utils/useRappels';
+import type { DoseEtat, StatutSaisi } from '../../utils/rappels';
 // ---- Données de démo (à remplacer par la vraie source plus tard) ----
-type Med = {
-  id: string;
-  letter: string;
-  name: string;
-  dose: string;
-  time: string;
-  bg: string;
-  fg: string;
-  taken?: boolean;
-  next?: boolean;
-};
 
-const MEDS: Med[] = [
-  { id: '1', letter: 'M', name: 'Metformine', dose: '500 mg · 1 comprimé', time: '08:00', bg: colors.tintBlue, fg: colors.brand, taken: true },
-  { id: '2', letter: 'V', name: 'Vitamine D3', dose: '1000 UI · 1 gélule', time: '12:30', bg: '#FEF3C7', fg: colors.warning, taken: true },
-  { id: '3', letter: 'A', name: 'Atorvastatine', dose: '20 mg · 1 comprimé', time: '20:00', bg: '#EDE9FE', fg: '#7C3AED', next: true },
-];
+
+
 
 type Period = 'week' | 'month';
 type Stats = {
@@ -117,47 +106,53 @@ function SectionHeader({
   );
 }
 
-function ActionButton({ label, icon, tone }: { label: string; icon: keyof typeof Ionicons.glyphMap; tone: 'ok' | 'neutral' }) {
-  const ok = tone === 'ok';
-  return (
-    <Pressable style={[styles.action, ok ? styles.actionOk : styles.actionNeutral]}>
-      <Ionicons name={icon} size={14} color={ok ? colors.success : colors.textSoft} />
-      <Text style={[styles.actionText, { color: ok ? colors.success : colors.textSoft }]}>{label}</Text>
-    </Pressable>
-  );
-}
 
-function MedItem({ med }: { med: Med }) {
+
+const PALETTE = [
+  { bg: colors.tintBlue, fg: colors.brand },
+  { bg: '#FEF3C7', fg: colors.warning },
+  { bg: '#EDE9FE', fg: '#7C3AED' },
+];
+
+function MedItem({
+  dose,
+  index,
+  isNext,
+  onAction,
+}: {
+  dose: DoseEtat;
+  index: number;
+  isNext: boolean;
+  onAction: (s: StatutSaisi) => void;
+}) {
+  const p = PALETTE[index % PALETTE.length];
+  const actionnable = dose.etat === 'EN_ATTENTE' || (dose.etat === 'A_VENIR' && isNext);
   return (
     <Card style={styles.medCard}>
       <View style={styles.medRow}>
-        <View style={[styles.avatar, { backgroundColor: med.bg }]}>
-          <Text style={[styles.avatarText, { color: med.fg }]}>{med.letter}</Text>
+        <View style={[styles.avatar, { backgroundColor: p.bg }]}>
+          <Text style={[styles.avatarText, { color: p.fg }]}>{dose.nom.charAt(0).toUpperCase()}</Text>
         </View>
         <View style={styles.flex}>
           <View style={styles.medNameRow}>
-            <Text style={styles.medName}>{med.name}</Text>
-            {med.taken && (
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>Pris</Text>
-              </View>
-            )}
+            <Text style={styles.medName}>{dose.nom}</Text>
+            <BadgeEtat etat={dose.etat} reporteJusqua={dose.reporteJusqua} />
           </View>
-          <Text style={styles.medDose}>{med.dose}</Text>
+          <Text style={styles.medDose}>
+            {[dose.dosage, `${dose.quantite} cp`].filter(Boolean).join(' · ')}
+          </Text>
         </View>
-        <Text style={styles.medTime}>{med.time}</Text>
+        <Text style={styles.medTime}>{dose.heure}</Text>
       </View>
 
-      {med.next && (
+      {actionnable && (
         <>
-          <View style={styles.actionsRow}>
-            <ActionButton label="Pris" icon="checkmark" tone="ok" />
-            <ActionButton label="Reporter" icon="time-outline" tone="neutral" />
-            <ActionButton label="Oublié" icon="close" tone="neutral" />
-          </View>
-          <View style={styles.reminder}>
-            <Text style={styles.reminderText}>Rappel prévu dans 20 minutes</Text>
-          </View>
+          <BoutonsPrise onAction={onAction} />
+          {dose.etat === 'A_VENIR' && (
+            <View style={styles.reminder}>
+              <Text style={styles.reminderText}>Rappel prévu à {dose.heure}</Text>
+            </View>
+          )}
         </>
       )}
     </Card>
@@ -169,6 +164,16 @@ export function HomeScreen() {
   const router = useRouter();
   const [suivi, setSuivi] = useState<SelectedPatient | null>(null);
   const [firstName, setFirstName] = useState<string | null>(null);
+  const { doses, nbEnAttente, agir } = useDoses();
+const pris = doses.filter((d) => d.etat === 'PRIS').length;
+const restantes = doses.filter((d) => d.etat !== 'PRIS' && d.etat !== 'OUBLIE').length;
+const pctJour = doses.length ? Math.round((pris / doses.length) * 100) : 0;
+const idxNext = doses.findIndex((d) => d.etat === 'A_VENIR');
+const dateJour = new Date().toLocaleDateString('fr-FR', {
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+});
 
   // À chaque retour sur l'écran : patient suivi + prénom de l'utilisateur connecté
   useFocusEffect(
@@ -216,7 +221,10 @@ export function HomeScreen() {
             )}
           </View>
           {/* unread garde le petit point rouge (enlève-le pour ne plus l'afficher). */}
-          <NotifBell unread onPress={() => {}} />
+          <NotifBell
+  unread={nbEnAttente > 0}
+  onPress={() => router.push('/boite-notifications' as never)}
+/>
         </View>
 
         {/* Carte dégradée : prises à venir */}
@@ -228,19 +236,25 @@ export function HomeScreen() {
         >
           <View style={styles.heroTop}>
             <View>
-              <Text style={styles.heroDate}>Mardi 24 juin</Text>
-              <Text style={styles.heroTitle}>2 prises à venir</Text>
+              <Text style={styles.heroDate}>{dateJour.charAt(0).toUpperCase() + dateJour.slice(1)}</Text>
+              <Text style={styles.heroTitle}>
+  {doses.length === 0
+    ? 'Aucune prise aujourd\'hui'
+    : restantes === 0
+      ? 'Tout est fait 🎉'
+      : `${restantes} prise${restantes > 1 ? 's' : ''} restante${restantes > 1 ? 's' : ''}`}
+</Text>
             </View>
             <View style={styles.heroIcon}>
               <Ionicons name="calendar-outline" size={18} color={colors.white} />
             </View>
           </View>
           <View style={styles.track}>
-            <View style={[styles.fill, { width: '33%' }]} />
+            <View style={[styles.fill, { width: `${pctJour}%` }]} />
           </View>
           <View style={styles.heroBottom}>
-            <Text style={styles.heroSmall}>1 sur 3 prises</Text>
-            <Text style={styles.heroSmall}>33%</Text>
+            <Text style={styles.heroSmall}>{pris} sur {doses.length} prises</Text>
+<Text style={styles.heroSmall}>{pctJour}%</Text>
           </View>
         </GradientBox>
 
@@ -328,12 +342,17 @@ export function HomeScreen() {
         </Card>
 
         {/* Prises du jour */}
-        <SectionHeader title="Prises du jour" action="Voir l'historique" />
+        <SectionHeader
+  title="Prises du jour"
+  action="Voir l'historique"
+  onPress={() => router.push('/suivi')}
+/>
         <View style={styles.medList}>
-          {MEDS.map((m) => (
-            <MedItem key={m.id} med={m} />
-          ))}
-        </View>
+  {doses.length === 0 && <Text style={styles.medDose}>Aucune prise prévue aujourd&apos;hui.</Text>}
+  {doses.map((d, i) => (
+    <MedItem key={d.key} dose={d} index={i} isNext={i === idxNext} onAction={(s) => agir(d, s)} />
+  ))}
+</View>
       </ScrollView>
     </SafeAreaView>
   );

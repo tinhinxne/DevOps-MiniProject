@@ -137,6 +137,7 @@ CREATE TABLE ordonnance (
     patient_id      UUID NOT NULL REFERENCES patient(id) ON DELETE CASCADE,
     titre           VARCHAR(100),
     note            TEXT,
+        medecin_id      UUID REFERENCES medecin(id) ON DELETE SET NULL,
     date_emission   DATE,
     photo_url       TEXT,
     date_expiration DATE,

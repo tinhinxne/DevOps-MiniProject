@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { NotifBell } from '../../../components/NotifBell'
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, spacing } from '@/theme';
@@ -105,6 +106,8 @@ function SectionTitle({ children }: { children: string }) {
 export default function MedicalProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+ 
+
 
   // Mode aidant : personId est fourni. Mode patient : il est absent.
   const { personId } = useLocalSearchParams<{ personId?: string }>();
@@ -254,12 +257,17 @@ export default function MedicalProfileScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.content,
-          { paddingTop: insets.top + spacing.md, paddingBottom: insets.bottom + spacing.lg },
+          { paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom + spacing.lg },
         ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}>
-        <SubPageHeader title={title} />
-
+       
+<View>
+  <SubPageHeader title={title} />
+  <View style={styles.bell}>
+    <NotifBell />
+  </View>
+</View>
         {loading ? (
           <View style={styles.center}>
             <ActivityIndicator color={colors.logoBlue} />
@@ -563,6 +571,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+bell: {
+  position: 'absolute',
+  right: 0,
+  top: 0,
+  bottom: 0,
+  justifyContent: 'center',
+},
   docSaveText: { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
   addDocBtn: {
     marginTop: 8,
