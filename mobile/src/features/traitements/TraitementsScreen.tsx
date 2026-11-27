@@ -1,4 +1,4 @@
-import { useCallback , useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   Image,
@@ -15,21 +15,27 @@ import * as ImagePicker from 'expo-image-picker';
 import { Href, useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
+import { planifierRappels } from '../../utils/rappels';
+import { REGLAGES_DEFAUT, lireReglages, replanifier, sauverReglages } from '../../utils/rappels';
+import type { Reglages } from '@/utils/rappels';
 
 import { Card } from '@/components/Card';
 import { SegmentedTabs } from '@/components/SegmentedTabs';
 import { SubPageHeader } from '@/components/SubPageHeader';
 import { colors, fontSize, radius, spacing } from '@/theme';
 import {
+  creerMedecin,
   creerOrdonnance,
+  listerMedecins,
   listerOrdonnances,
   listerTraitements,
   renouvelerOrdonnance,
 } from '@/utils/api';
-import type { TraitementApi } from '@/utils/api';
+import type { Medecin, TraitementApi } from '@/utils/api';
 import { ymd } from '@/utils/traitement';
 
 import { Medicament, Ordonnance } from './mock';
+import * as FileSystem from 'expo-file-system/legacy';
 type Onglet = 'ordonnances' | 'medicaments';
 
 const OPTIONS: { value: Onglet; label: string }[] = [
@@ -126,6 +132,23 @@ const [dureeUnite, setDureeUnite] = useState<Unite>('mois');
   const [renouvId, setRenouvId] = useState<string | null>(null);
   const [renouvNb, setRenouvNb] = useState('1');
   const [renouvUnite, setRenouvUnite] = useState<Unite>('mois');
+    const [medecins, setMedecins] = useState<Medecin[]>([]);
+  const [medecinId, setMedecinId] = useState<string | null>(null);
+  const [nouveauMed, setNouveauMed] = useState(false);
+  const [medNom, setMedNom] = useState('');
+  const [medSpec, setMedSpec] = useState('');
+  const [r, setR] = useState<Reglages>(REGLAGES_DEFAUT);
+const [missedAlert, setMissedAlert] = useState(true);
+
+useEffect(() => {
+  lireReglages().then(setR);
+}, []);
+
+const maj = (p: Partial<Reglages>) => {
+  const n = { ...r, ...p };
+  setR(n);
+  sauverReglages(n).then(replanifier);
+};
 
   const charger = useCallback(async () => {
     try {
@@ -133,23 +156,31 @@ const [dureeUnite, setDureeUnite] = useState<Unite>('mois');
       const token = await SecureStore.getItemAsync('token');
       photoHeaders = { Authorization: `Bearer ${token ?? ''}` };
       const data = await listerOrdonnances();
-      setListe(
-        data.map((o): Ordonnance => {
-          const expireLe = fr(o.dateExpiration);
-          return {
-            id: o.id,
-            titre: o.titre ?? '',
-            note: o.note ?? '',
-            delivreeLe: fr(o.dateEmission),
-            expireLe,
-            photoUri: `${API_URL}/ordonnances/${o.id}/photo`,
-            // « en cours » = pas encore expirée
-            statut: !expireLe || joursRestants(expireLe) >= 0 ? 'active' : 'ancienne',
-          };
-        }),
-      );
+     // dans charger(), remplace setListe(data.map(...)) par :
+setListe((prev) =>
+  data.map((o): Ordonnance => {
+    const expireLe = fr(o.dateExpiration);
+    const locale = prev.find((x) => x.id === o.id)?.photoUri;
+    return {
+      id: o.id,
+      titre: o.titre ?? '',
+      note: o.note ?? '',
+      medecinId: o.medecinId ?? undefined,
+      medecinNom: o.medecinNom ?? undefined,
+      delivreeLe: fr(o.dateEmission),
+      expireLe,
+      photoUri:
+        locale && !locale.startsWith('http')
+          ? locale
+          : `${API_URL}/ordonnances/${o.id}/photo`,
+      statut: !expireLe || joursRestants(expireLe) >= 0 ? 'active' : 'ancienne',
+    };
+  }),
+);
       const trait = await listerTraitements();
       setMedicaments(trait.map(versMedicament));
+     
+planifierRappels(trait);   // <- ajoute
     } catch (e) {
       setErreur(e instanceof Error ? e.message : 'Chargement impossible.');
     }
@@ -217,6 +248,17 @@ const [dureeUnite, setDureeUnite] = useState<Unite>('mois');
     setNote('');
     setDureeNb('1');
     setDureeUnite('mois');
+        setMedecinId(null);
+    setMedNom('');
+    setMedSpec('');
+    try {
+      const l = await listerMedecins();
+      setMedecins(l);
+      setNouveauMed(l.length === 0); // aucun médecin -> saisie directe
+    } catch {
+      setMedecins([]);
+      setNouveauMed(true);
+    }
   
   };
 
@@ -228,17 +270,33 @@ const [dureeUnite, setDureeUnite] = useState<Unite>('mois');
       Alert.alert('Durée invalide', 'Saisis une durée supérieure à 0.');
       return;
     }
+        if (nouveauMed ? !medNom.trim() : !medecinId) {
+      Alert.alert('Médecin requis', 'Choisis ou saisis le médecin de cette ordonnance.');
+      return;
+    }
     const aujourdhui = new Date();
     const expire = ajouterDuree(aujourdhui, n, dureeUnite);
     const fmt = (d: Date) => d.toLocaleDateString('fr-FR');
     try {
-      setEnvoi(true);
+            setEnvoi(true);
+      let idMedecin = medecinId;
+      let nomMedecin = medecins.find((m) => m.id === medecinId)?.nom;
+      if (nouveauMed) {
+        const m = await creerMedecin(medNom.trim(), medSpec.trim());
+        idMedecin = m.id;
+        nomMedecin = m.nom;
+        // si l'envoi échoue ensuite, un nouvel essai réutilise ce médecin (pas de doublon)
+        setMedecins((l) => [...l, m]);
+        setMedecinId(m.id);
+        setNouveauMed(false);
+      }
       const created = await creerOrdonnance({
         imageBase64: brouillon.base64 ?? '',
         dateEmission: ymd(aujourdhui),
         dateExpiration: ymd(expire),
         titre: titre.trim(),
         note: note.trim(),
+        medecinId: idMedecin!,
       });
       const nouvelle: Ordonnance = {
         id: created.id,
@@ -248,6 +306,8 @@ const [dureeUnite, setDureeUnite] = useState<Unite>('mois');
         expireLe: fmt(expire),
         statut: 'active',
         photoUri: brouillon.uri,
+        medecinId: idMedecin!,
+        medecinNom: nomMedecin,
       };
       setListe((l) => [nouvelle, ...l]); // on ne rétrograde plus les autres
       setBrouillon(null);
@@ -335,6 +395,54 @@ const [dureeUnite, setDureeUnite] = useState<Unite>('mois');
               placeholderTextColor={colors.textLabel}
               style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
             />
+                        <Text style={styles.medPoso}>Médecin</Text>
+            {!nouveauMed ? (
+              <View style={styles.chips}>
+                {medecins.map((m) => (
+                  <Pressable
+                    key={m.id}
+                    onPress={() => setMedecinId(m.id)}
+                    accessibilityRole="button"
+                    style={[styles.chip, medecinId === m.id && styles.chipActive]}>
+                    <Text style={[styles.chipText, medecinId === m.id && styles.chipTextActive]}>
+                      {m.nom}
+                      {m.specialite ? ` (${m.specialite})` : ''}
+                    </Text>
+                  </Pressable>
+                ))}
+                <Pressable
+                  onPress={() => {
+                    setNouveauMed(true);
+                    setMedecinId(null);
+                  }}
+                  accessibilityRole="button"
+                  style={styles.chip}>
+                  <Text style={styles.chipText}>+ Nouveau médecin</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <>
+                <TextInput
+                  value={medNom}
+                  onChangeText={setMedNom}
+                  placeholder="Nom du médecin (ex : Dr Benali)"
+                  placeholderTextColor={colors.textLabel}
+                  style={styles.input}
+                />
+                <TextInput
+                  value={medSpec}
+                  onChangeText={setMedSpec}
+                  placeholder="Spécialité (facultatif)"
+                  placeholderTextColor={colors.textLabel}
+                  style={styles.input}
+                />
+                {medecins.length > 0 && (
+                  <Pressable onPress={() => setNouveauMed(false)} accessibilityRole="button">
+                    <Text style={styles.link}>Choisir un médecin existant</Text>
+                  </Pressable>
+                )}
+              </>
+            )}
                        <Text style={styles.medPoso}>Valable pendant</Text>
             <DureeSaisie
               nb={dureeNb}
@@ -460,6 +568,7 @@ const [dureeUnite, setDureeUnite] = useState<Unite>('mois');
                 {detail.titre || `Ordonnance du ${detail.delivreeLe}`}
               </Text>
               {!!detail.note && <Text style={styles.body}>{detail.note}</Text>}
+               {!!detail.medecinNom && <Text style={styles.body}>Médecin : {detail.medecinNom}</Text>}
               <View style={styles.detailRow}>
                 <Miniature grande uri={detail.photoUri} />
                 <Pressable
@@ -552,13 +661,7 @@ const [dureeUnite, setDureeUnite] = useState<Unite>('mois');
         animationType="fade"
         onRequestClose={() => setPhotoOuverte(false)}>
         <Pressable style={styles.viewer} onPress={() => setPhotoOuverte(false)}>
-          {detail?.photoUri && (
-            <Image
-              source={imgSource(detail.photoUri)}
-              style={styles.viewerImg}
-              resizeMode="contain"
-            />
-          )}
+         {detail?.photoUri && <PhotoPleine uri={detail.photoUri} />}
         </Pressable>
       </Modal>
 
@@ -631,6 +734,26 @@ function ExpirationBadge({ expireLe }: { expireLe: string }) {
     </View>
   );
 }
+function PhotoPleine({ uri }: { uri: string }) {
+  const [local, setLocal] = useState<string | null>(!uri.startsWith('http') ? uri : null);
+
+  useEffect(() => {
+    if (uri.startsWith('http')) {
+      let annule = false;
+      const dest = FileSystem.cacheDirectory + uri.split('/ordonnances/')[1].replace('/', '_') + '.jpg';
+      FileSystem.downloadAsync(uri, dest, { headers: photoHeaders })
+        .then((r) => !annule && r.status === 200 && setLocal(r.uri))
+        .catch(() => {});
+      return () => {
+        annule = true;
+      };
+    }
+  }, [uri]);
+
+  return local ? (
+    <Image source={{ uri: local }} style={styles.viewerImg} resizeMode="contain" />
+  ) : null;
+}
 
 function Recherche({
   valeur,
@@ -664,22 +787,33 @@ function Miniature({ grande, uri }: { grande?: boolean; uri?: string }) {
 function MiniatureImage({ grande, uri }: { grande?: boolean; uri?: string }) {
   const taille = grande ? 72 : 64;
   const [ko, setKo] = useState(false);
-  const [essai, setEssai] = useState(0);
+  const [local, setLocal] = useState<string | null>(
+    uri && !uri.startsWith('http') ? uri : null,
+  );
+
+  useEffect(() => {
+    if (!uri || !uri.startsWith('http')) return;
+    let annule = false;
+    const dest = FileSystem.cacheDirectory + uri.split('/ordonnances/')[1].replace('/', '_') + '.jpg';
+    FileSystem.downloadAsync(uri, dest, { headers: photoHeaders })
+      .then((r) => {
+        if (annule) return;
+        if (r.status === 200) setLocal(r.uri);
+        else setKo(true);
+      })
+      .catch((e) => {
+       console.log('DL KO', uri, String(e));
+        if (!annule) setKo(true);
+      });
+    return () => {
+      annule = true;
+    };
+  }, [uri]);
 
   return (
     <View style={[styles.miniature, { width: taille, height: taille, overflow: 'hidden' }]}>
-      {uri && !ko ? (
-        <Image
-          key={essai}
-          source={imgSource(uri)}
-          style={{ width: taille, height: taille }}
-          onError={(e) => {
-            console.log('IMG KO', uri, e.nativeEvent.error);
-            // un 2e essai automatique avant d'abandonner
-            if (essai < 1) setEssai(essai + 1);
-            else setKo(true);
-          }}
-        />
+      {local && !ko ? (
+        <Image source={{ uri: local }} style={{ width: taille, height: taille }} />
       ) : (
         <Ionicons name="document-text-outline" size={taille / 2} color={colors.textLabel} />
       )}

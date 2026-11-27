@@ -1,0 +1,1 @@
+export { BoiteNotificationsScreen as default } from '../features/notifications/BoiteNotificationsScreen';

@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
@@ -12,14 +11,15 @@ import {
   Text,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
 import { medicaments } from '../traitements/mock';
 import { detecterInteractions, Interaction } from './interactions';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, DateTimeField, Input } from '../../components';
 import { colors, fontSize, radius, spacing } from '../../theme';
 import { formatTime } from '../../utils/datetime';
 import { FREQUENCES, getHabitMoments, Moment } from '../saisie_manuelle/mock';
-import { creerTraitement } from '../../utils/api';
+import { creerTraitement, modifierTraitement } from '../../utils/api';
 import { momentDepuisLabel, ymd } from '../../utils/traitement';
 import { SelectField } from '../saisie_manuelle/SelectField';
 
@@ -29,28 +29,64 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 export function ConfigurerPriseScreen() {
   const router = useRouter();
-  // Valeurs de démonstration si on arrive sans paramètres
   const params = useLocalSearchParams<{
+    id?: string; // présent = mode modification
     nom?: string;
     dosage?: string;
     dci?: string;
     forme?: string;
     ordonnanceId?: string;
     patientId?: string;
+    unites?: string;
+    tailles?: string;
+    quantite?: string;
+    dureeJours?: string;
+    stockRestant?: string;
+    instructions?: string;
+    rappels?: string;
+    dateDebut?: string; // AAAA-MM-JJ
   }>();
+  const modeEdition = !!params.id;
+
+  // Valeurs de démonstration seulement en création
   const nom = params.nom ?? 'Doliprane';
   const dosage = params.dosage ?? '500 mg';
-  const dci = params.dci ?? 'paracétamol';
-  const forme = (params.forme ?? 'comprimé').toLowerCase();
+  const dci = params.dci ?? (modeEdition ? '' : 'paracétamol');
+  const forme = (params.forme ?? (modeEdition ? '' : 'comprimé')).toLowerCase();
+  const tailles = (params.tailles ?? '').split(',').filter(Boolean);
 
-  const [moments, setMoments] = useState<Moment[]>(getHabitMoments());
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const rappelsInit: { moment: string; heure: string }[] = (() => {
+    try {
+      return params.rappels ? JSON.parse(params.rappels) : [];
+    } catch {
+      return [];
+    }
+  })();
+
+  const [moments, setMoments] = useState<Moment[]>(() => {
+    const base = getHabitMoments();
+    // heures déjà utilisées par le médicament mais absentes des habitudes -> on les ajoute
+    const extra = rappelsInit
+      .filter((r) => !base.some((m) => m.time === r.heure))
+      .map((r) => ({ id: `perso-${r.heure}`, label: 'Perso', time: r.heure }));
+    return [...base, ...extra];
+  });
+  const [selectedIds, setSelectedIds] = useState<string[]>(() => {
+    const base = getHabitMoments();
+    return rappelsInit.map((r) => base.find((m) => m.time === r.heure)?.id ?? `perso-${r.heure}`);
+  });
   const [customTime, setCustomTime] = useState<Date>(DEFAULT_CUSTOM_TIME);
-  const [quantity, setQuantity] = useState(1);
+  const [quantity, setQuantity] = useState(Number(params.quantite) || 1);
   const [frequence, setFrequence] = useState(FREQUENCES[0]);
-  const [days, setDays] = useState(7);
-  const [startDate, setStartDate] = useState<Date>(new Date());
-  const [instructions, setInstructions] = useState('');
+  const [days, setDays] = useState(Number(params.dureeJours) || 7);
+  const [boites, setBoites] = useState(1);
+  const [parBoite, setParBoite] = useState(
+    params.unites ?? (modeEdition ? params.stockRestant ?? '' : ''),
+  );
+  const [startDate, setStartDate] = useState<Date>(
+    params.dateDebut ? new Date(`${params.dateDebut.slice(0, 10)}T00:00:00`) : new Date(),
+  );
+  const [instructions, setInstructions] = useState(params.instructions ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -59,7 +95,8 @@ export function ConfigurerPriseScreen() {
     medicaments.map((m) => ({ nom: m.nom })),
   );
   const alerte = interactions[0];
-  const plural = (n: number) => (n > 1 && !forme.endsWith('s') ? `${forme}s` : forme);
+  const unite = !forme || forme.length > 14 ? 'unité' : forme;
+  const plural = (n: number) => (n > 1 && !unite.endsWith('s') ? `${unite}s` : unite);
   const prisesParJour = selectedIds.length;
   const total = prisesParJour * quantity * days;
   const finPrevue = new Date(startDate);
@@ -89,24 +126,36 @@ export function ConfigurerPriseScreen() {
     const ordonnanceId =
       params.ordonnanceId && UUID_RE.test(params.ordonnanceId) ? params.ordonnanceId : undefined;
 
+    // Stock = nombre de boîtes × unités par boîte
+    const unites = parseInt(parBoite, 10);
+    const stockRestant = unites > 0 ? boites * unites : undefined;
+
     try {
       setSaving(true);
       setError('');
-      // patientId absent => creerTraitement prend le patient sélectionné sur le téléphone
-      await creerTraitement({
-        patientId: params.patientId, // optionnel
+      const payload = {
         ordonnanceId,
         nom,
-        dci,
+        // en modification, on n'envoie dci/forme que si on les connaît (évite d'écraser)
+        dci: dci || undefined,
         dosage,
-        forme,
+        forme: forme || undefined,
         frequence,
+        stockRestant,
         dureeJours: days,
         quantite: quantity,
         dateDebut: ymd(startDate),
         instructions: instructions.trim(),
         rappels: choisis.map((m) => ({ moment: momentDepuisLabel(m.label), heure: m.time })),
-      });
+        source: ordonnanceId ? 'ORDONNANCE' : 'MANUEL',
+      };
+
+      if (params.id) {
+        await modifierTraitement(params.id, payload);
+      } else {
+        // patientId absent => creerTraitement prend le patient sélectionné sur le téléphone
+        await creerTraitement({ patientId: params.patientId, ...payload });
+      }
       router.replace('/ordonnances');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erreur inconnue');
@@ -156,7 +205,9 @@ export function ConfigurerPriseScreen() {
               <Ionicons name="chevron-back" size={20} color={colors.brandDeep} />
             </Pressable>
             <View style={styles.flex}>
-              <Text style={styles.title}>Configurer la prise</Text>
+              <Text style={styles.title}>
+                {modeEdition ? 'Modifier la prise' : 'Configurer la prise'}
+              </Text>
               <Text style={styles.subtitle}>Précisez comment prendre le médicament</Text>
             </View>
           </View>
@@ -172,18 +223,22 @@ export function ConfigurerPriseScreen() {
               <Text style={styles.medName}>
                 {nom} {dosage}
               </Text>
-              <Text style={styles.medMeta}>
-                DCI · {dci} · {forme}
-              </Text>
+              {!!(dci || forme) && (
+                <Text style={styles.medMeta}>
+                  {[dci && `DCI · ${dci}`, forme].filter(Boolean).join(' · ')}
+                </Text>
+              )}
             </View>
-            <View style={styles.medSide}>
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>Référentiel</Text>
+            {!modeEdition && (
+              <View style={styles.medSide}>
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>Référentiel</Text>
+                </View>
+                <Pressable onPress={() => router.back()} hitSlop={8} accessibilityRole="button">
+                  <Text style={styles.change}>Changer</Text>
+                </Pressable>
               </View>
-              <Pressable onPress={() => router.back()} hitSlop={8} accessibilityRole="button">
-                <Text style={styles.change}>Changer</Text>
-              </Pressable>
-            </View>
+            )}
           </View>
 
           <Text style={styles.label}>Moments de prise (heures de « Mes habitudes »)</Text>
@@ -213,6 +268,7 @@ export function ConfigurerPriseScreen() {
             <Button title="Ajouter" variant="outline" onPress={handleAddCustom} />
           </View>
 
+          {/* Quantité par prise / Fréquence */}
           <View style={styles.row}>
             <View style={styles.flex}>
               <Text style={styles.label}>Quantité par prise</Text>
@@ -233,6 +289,7 @@ export function ConfigurerPriseScreen() {
             </View>
           </View>
 
+          {/* Durée / Date de début */}
           <View style={styles.row}>
             <View style={styles.flex}>
               <Text style={styles.label}>Durée</Text>
@@ -253,6 +310,44 @@ export function ConfigurerPriseScreen() {
               />
             </View>
           </View>
+
+          {/* Nombre de boîtes / Unités par boîte */}
+          <View style={styles.row}>
+            <View style={styles.flex}>
+              <Text style={styles.label}>Nombre de boîtes</Text>
+              <Stepper
+                label={`${boites} boîte${boites > 1 ? 's' : ''}`}
+                onMinus={() => setBoites((b) => Math.max(1, b - 1))}
+                onPlus={() => setBoites((b) => Math.min(20, b + 1))}
+              />
+            </View>
+            <View style={styles.flex}>
+              <Input
+                label="Unités par boîte"
+                labelColor={colors.brandDeep}
+                value={parBoite}
+                onChangeText={(t: string) => setParBoite(t.replace(/[^0-9]/g, ''))}
+                keyboardType="number-pad"
+                placeholder="16"
+              />
+            </View>
+          </View>
+
+          {tailles.length > 1 && (
+            <View style={styles.chips}>
+              {tailles.map((t) => (
+                <Pressable
+                  key={t}
+                  onPress={() => setParBoite(t)}
+                  style={[styles.chip, parBoite === t && styles.chipSelected]}
+                >
+                  <Text style={[styles.chipLabel, parBoite === t && styles.chipTextSelected]}>
+                    B/{t}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
 
           <View style={styles.summary}>
             <Text style={styles.summaryTitle}>Fin prévue : {fmtDate(finPrevue)}</Text>
@@ -275,7 +370,12 @@ export function ConfigurerPriseScreen() {
             <AlerteInteraction interaction={alerte} autres={interactions.length - 1} />
           ) : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
-          <Button title="Ajouter au traitement" variant="deep" onPress={handleSave} disabled={saving} />
+          <Button
+            title={modeEdition ? 'Enregistrer les modifications' : 'Ajouter au traitement'}
+            variant="deep"
+            onPress={handleSave}
+            disabled={saving}
+          />
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>

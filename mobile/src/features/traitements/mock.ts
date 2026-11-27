@@ -2,6 +2,8 @@ export type Ordonnance = {
   id: string;
   titre?: string;
 note?: string;
+  medecinId?: string;
+  medecinNom?: string;
   delivreeLe: string;
   expireLe: string;
   statut: 'active' | 'ancienne';

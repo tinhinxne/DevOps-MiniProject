@@ -14,39 +14,32 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Card, Input } from '../../components';
 import meds from '../../data/meds-dz.json';
 import { colors, fontSize, radius, spacing } from '../../theme';
-
+import { taillesBoite } from '../../utils/referentiel';
 
 type Medicament = { id: string; n: string; g: string; f: string; d: string; c: string };
 const REFERENTIEL = meds as Medicament[];
 
+// minuscules + sans accents, pour que "paracetamol" trouve "Paracétamol"
+const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
 export function AjoutMed() {
-  // minuscules + sans accents, pour que "paracetamol" trouve "Paracétamol"
-const norm = (s: string) =>
-  s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const router = useRouter();
   const { ordonnanceId, patientId } = useLocalSearchParams<{
-  ordonnanceId?: string;
-  patientId?: string;
-}>();
-// à transmettre aux écrans suivants (vide si on arrive sans ordonnance)
-const ctx = {
-  ...(ordonnanceId ? { ordonnanceId } : {}),
-  ...(patientId ? { patientId } : {}),
-};
+    ordonnanceId?: string;
+    patientId?: string;
+  }>();
+
+  // à transmettre aux écrans suivants (vide si on arrive sans ordonnance)
+  const ctx = {
+    ...(ordonnanceId ? { ordonnanceId } : {}),
+    ...(patientId ? { patientId } : {}),
+  };
+
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
- 
-  //   const results = useMemo(() => {
-  //   const q = norm(query.trim());
-  //   if (q.length < 1) return [];
-  //   return REFERENTIEL.filter(
-  //     (m) => norm(m.n).includes(q) || norm(m.g).includes(q),
-  //   ).slice(0, 30);
-  // }, [query]);
-
-    const results = useMemo(() => {
+  // Les résultats qui commencent par la recherche passent avant ceux qui la contiennent
+  const results = useMemo(() => {
     const q = norm(query.trim());
     if (q.length < 1) return [];
     const debut: Medicament[] = [];
@@ -61,13 +54,25 @@ const ctx = {
   }, [query]);
 
   const handleContinue = () => {
-  const med = REFERENTIEL.find((m) => m.id === selectedId);
-  if (!med) return;
-  router.push({
-    pathname: '/configurer-prise',
-    params: { nom: med.n, dosage: med.d, dci: med.g, forme: med.f, ...ctx },
-  } as unknown as Href);
-};
+    const med = REFERENTIEL.find((m) => m.id === selectedId);
+    if (!med) return;
+    const tailles = taillesBoite(med.c);
+    router.push({
+      pathname: '/configurer-prise',
+      params: {
+        nom: med.n,
+        dosage: med.d,
+        dci: med.g,
+        forme: med.f,
+        unites: tailles[0] ? String(tailles[0]) : '',
+        tailles: tailles.join(','),
+        ...ctx,
+      },
+    } as unknown as Href);
+  };
+
+  const saisieManuelle = () =>
+    router.push({ pathname: '/saisie-manuelle', params: ctx } as unknown as Href);
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -98,7 +103,6 @@ const ctx = {
             </View>
           </View>
 
-
           {/* Recherche */}
           <Input
             label="Médicament"
@@ -123,25 +127,25 @@ const ctx = {
                 return (
                   <Pressable key={m.id} style={styles.row} onPress={() => setSelectedId(m.id)}>
                     <View style={[styles.checkbox, selected && styles.checkboxOn]}>
-                      {selected ? <Ionicons name="checkmark" size={14} color={colors.white} /> : null}
+                      {selected ? (
+                        <Ionicons name="checkmark" size={14} color={colors.white} />
+                      ) : null}
                     </View>
                     <View style={styles.flex}>
-                      {/* <Text style={styles.medName}>{m.name}</Text>
-                      <Text style={styles.medMeta}>{`DCI · ${m.dci} · ${m.forme}`}</Text> */}
                       <Text style={styles.medName}>{m.d ? `${m.n} ${m.d}` : m.n}</Text>
-<Text style={styles.medMeta}>{`DCI · ${m.g} · ${m.f}`}</Text>
+                      <Text style={styles.medMeta}>{`DCI · ${m.g} · ${m.f}`}</Text>
                     </View>
                   </Pressable>
                 );
               })}
 
               <View style={styles.sep} />
-              <Pressable onPress={() => router.push({ pathname: '/saisie-manuelle', params: ctx } as unknown as Href)}style={styles.manual}>
+              <Pressable onPress={saisieManuelle} style={styles.manual}>
                 <Text style={styles.manualText}>Introuvable ? Saisir manuellement</Text>
               </Pressable>
             </Card>
           ) : query.trim().length > 0 ? (
-            <Pressable onPress={() => router.push({ pathname: '/saisie-manuelle', params: ctx } as unknown as Href)} style={styles.manual}>
+            <Pressable onPress={saisieManuelle} style={styles.manual}>
               <Text style={styles.manualText}>Aucun résultat. Saisir manuellement</Text>
             </Pressable>
           ) : null}
@@ -168,25 +172,37 @@ const styles = StyleSheet.create({
 
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   back: {
-    width: 38, height: 38, borderRadius: radius.md, backgroundColor: colors.card,
-    borderWidth: 1, borderColor: colors.modeBorder, alignItems: 'center', justifyContent: 'center',
+    width: 38,
+    height: 38,
+    borderRadius: radius.md,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.modeBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: { fontSize: fontSize.lg, fontWeight: '700', color: colors.brandName },
   subtitle: { fontSize: fontSize.sm, color: colors.textSoft },
 
-  scan: {
-    borderWidth: 1.5, borderColor: colors.brand, borderRadius: radius.md,
-    backgroundColor: colors.card, paddingVertical: spacing.md, alignItems: 'center',
-  },
-  scanText: { fontSize: fontSize.md, fontWeight: '700', color: colors.brand },
-
   hint: { fontSize: 11, color: colors.textSoft, marginTop: -spacing.sm },
 
   results: { gap: spacing.sm, padding: spacing.sm },
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.sm, paddingHorizontal: spacing.xs },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+  },
   checkbox: {
-    width: 22, height: 22, borderRadius: 6, backgroundColor: colors.tintBlue,
-    borderWidth: 1.5, borderColor: colors.tintBlue, alignItems: 'center', justifyContent: 'center',
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    backgroundColor: colors.tintBlue,
+    borderWidth: 1.5,
+    borderColor: colors.tintBlue,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   checkboxOn: { backgroundColor: colors.brand, borderColor: colors.brand },
   medName: { fontSize: fontSize.sm, fontWeight: '700', color: colors.text },

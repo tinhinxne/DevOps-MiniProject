@@ -118,6 +118,7 @@ CREATE TABLE ordonnance (
 
 CREATE TABLE medicament (
     id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        medecin_id      TEXT REFERENCES medecin(id) ON DELETE SET NULL,
     nom_commercial  TEXT NOT NULL,
     dci             TEXT,
     dosage          TEXT,

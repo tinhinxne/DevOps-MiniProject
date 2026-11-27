@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Href, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Card } from '../../components';
 import { colors, fontSize, radius, spacing } from '../../theme';
-import { listerOrdonnances, listerTraitements } from '@/utils/api';
+import { listerOrdonnances, listerTraitements, supprimerTraitement } from '@/utils/api';
 import type { TraitementApi } from '@/utils/api';
 
 const MOMENT: Record<string, string> = {
@@ -64,26 +64,58 @@ export function DetailMedicamentScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const [med, setMed] = useState<ReturnType<typeof versDetail> | null>(null);
+  const [trait, setTrait] = useState<TraitementApi | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const [trait, ords] = await Promise.all([listerTraitements(), listerOrdonnances()]);
-        const t = trait.find((x) => x.id === id);
-        if (!t) return setErreur('Médicament introuvable.');
-        const o = ords.find((x) => x.id === t.ordonnanceId);
-        setMed(
-          versDetail(
-            t,
-            o ? `Ordonnance : ${o.titre || `du ${frIso(o.dateEmission)}`}` : 'Saisie manuelle',
-          ),
-        );
-      } catch (e) {
-        setErreur(e instanceof Error ? e.message : 'Chargement impossible.');
-      }
-    })();
-  }, [id]);
+  // Recharge à chaque retour sur l'écran (ex. après une modification).
+  useFocusEffect(
+    useCallback(() => {
+      let actif = true;
+      (async () => {
+        try {
+          const [traitements, ords] = await Promise.all([listerTraitements(), listerOrdonnances()]);
+          if (!actif) return;
+          const t = traitements.find((x) => x.id === id);
+          if (!t) return setErreur('Médicament introuvable.');
+          const o = ords.find((x) => x.id === t.ordonnanceId);
+          setErreur(null);
+          setTrait(t);
+          setMed(
+            versDetail(
+              t,
+              o ? `Ordonnance : ${o.titre || `du ${frIso(o.dateEmission)}`}` : 'Saisie manuelle',
+            ),
+          );
+        } catch (e) {
+          if (actif) setErreur(e instanceof Error ? e.message : 'Chargement impossible.');
+        }
+      })();
+      return () => {
+        actif = false;
+      };
+    }, [id]),
+  );
+
+  // Envoie directement à l'écran de configuration de prise, en mode modification
+  // (la présence de `id` indique qu'il faut modifier et non créer).
+  const handleEdit = () => {
+    if (!trait) return;
+    router.push({
+      pathname: '/configurer-prise',
+      params: {
+        id: trait.id,
+        nom: trait.nom,
+        dosage: trait.dosage ?? '',
+        quantite: String(trait.quantite ?? 1),
+        dureeJours: String(trait.dureeJours ?? 1),
+        stockRestant: trait.stockRestant != null ? String(trait.stockRestant) : '',
+        instructions: trait.instructions ?? '',
+        rappels: JSON.stringify(trait.rappels),
+        ordonnanceId: trait.ordonnanceId ?? '',
+        dateDebut: trait.dateDebut.slice(0, 10),
+      },
+    } as unknown as Href);
+  };
 
   const handleDelete = () => {
     Alert.alert('Supprimer ce médicament ?', 'Cette action est définitive.', [
@@ -91,8 +123,18 @@ export function DetailMedicamentScreen() {
       {
         text: 'Supprimer',
         style: 'destructive',
-        // TODO: route DELETE /traitements/:id à créer côté backend
-        onPress: () => router.back(),
+        onPress: async () => {
+          try {
+            if (!id) return;
+            await supprimerTraitement(id);
+            router.back();
+          } catch (e) {
+            Alert.alert(
+              'Suppression impossible',
+              e instanceof Error ? e.message : 'Réessaie dans un instant.',
+            );
+          }
+        },
       },
     ]);
   };
@@ -180,13 +222,7 @@ export function DetailMedicamentScreen() {
 
       <View style={styles.footer}>
         <View style={styles.flex}>
-          <Button
-            title="Modifier"
-            variant="outline"
-            onPress={() => {
-              // TODO: écran de modification
-            }}
-          />
+          <Button title="Modifier" variant="outline" onPress={handleEdit} />
         </View>
         <View style={styles.flex}>
           <Button title="Supprimer" variant="dangerOutline" onPress={handleDelete} />

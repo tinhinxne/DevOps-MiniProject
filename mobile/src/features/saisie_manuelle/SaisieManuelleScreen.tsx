@@ -26,6 +26,7 @@ import { creerTraitement } from '../../utils/api';
 import { momentDepuisLabel, ymd } from '../../utils/traitement';
 
 const DEFAULT_CUSTOM_TIME = new Date(2000, 0, 1, 15, 30);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function SaisieManuelleScreen() {
   const router = useRouter();
@@ -42,9 +43,11 @@ export function SaisieManuelleScreen() {
   const [quantity, setQuantity] = useState(1);
   const [startDate, setStartDate] = useState<Date>(new Date());
   const [instructions, setInstructions] = useState('');
+  const [boites, setBoites] = useState('1');
+const [parBoite, setParBoite] = useState('');
   const [error, setError] = useState('');
 
-  const unit = forme.toLowerCase();
+ const unit = forme.length > 14 ? 'unité' : forme.toLowerCase();
   const quantityLabel = `${quantity} ${unit}${quantity > 1 && !unit.endsWith('s') ? 's' : ''}`;
 
   const toggleMoment = (id: string) => {
@@ -72,16 +75,19 @@ export function SaisieManuelleScreen() {
     if (!name.trim()) return setError('Indique le nom du médicament.');
     if (selectedIds.length === 0) return setError('Choisis au moins un moment de prise.');
     if (!days || days < 1) return setError('Indique une durée en jours.');
-    if (!patientId) return setError('Patient inconnu : ouvre cet écran depuis une ordonnance.');
+
 
     const choisis = moments
       .filter((m) => selectedIds.includes(m.id))
       .sort((a, b) => a.time.localeCompare(b.time));
+      const ordId = ordonnanceId && UUID_RE.test(ordonnanceId) ? ordonnanceId : undefined;
+      const unites = parseInt(parBoite, 10);
+const stockRestant = unites > 0 ? (parseInt(boites, 10) || 1) * unites : undefined;
     try {
       setSaving(true);
       setError('');
       await creerTraitement({
-        patientId, ordonnanceId,
+        patientId, ordonnanceId: ordId,
         nom: name.trim(),
         dosage: dosage.trim(),
         forme, frequence,
@@ -90,6 +96,7 @@ export function SaisieManuelleScreen() {
         dateDebut: ymd(startDate),
         instructions: instructions.trim(),
         saisieManuelle: true,
+        stockRestant,
         rappels: choisis.map((m) => ({ moment: momentDepuisLabel(m.label), heure: m.time })),
       });
       router.replace('/ordonnances');
@@ -250,6 +257,28 @@ export function SaisieManuelleScreen() {
               />
             </View>
           </View>
+          <View style={styles.row}>
+  <View style={styles.flex}>
+    <Input
+      label="Nombre de boîtes"
+      labelColor={colors.textLabel}
+      value={boites}
+      onChangeText={(t: string) => setBoites(t.replace(/[^0-9]/g, ''))}
+      keyboardType="number-pad"
+      placeholder="1"
+    />
+  </View>
+  <View style={styles.flex}>
+    <Input
+     label="Unités par boîte"
+      labelColor={colors.textLabel}
+      value={parBoite}
+      onChangeText={(t: string) => setParBoite(t.replace(/[^0-9]/g, ''))}
+      keyboardType="number-pad"
+      placeholder="16"
+    />
+  </View>
+</View>
 
           <Input
             label="Instructions (facultatif)"
@@ -264,7 +293,7 @@ export function SaisieManuelleScreen() {
 
         <View style={styles.footer}>
           {error ? <Text style={styles.error}>{error}</Text> : null}
-          <Button title="Enregistrer et activer les rappels" variant="deep" onPress={handleSave} />
+         <Button title="Enregistrer et activer les rappels" variant="deep" onPress={handleSave} disabled={saving} />
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>

@@ -10,6 +10,7 @@ const router = express.Router();
 router.use(requireAuth);
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '../../uploads/ordonnances');
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const bad = (res, code, error) => res.status(400).json({ code, error });
 const notFound = (res) => res.status(404).json({ code: 'ORDONNANCE_INTROUVABLE', error: 'Ordonnance introuvable' });
@@ -23,6 +24,8 @@ const sortie = (o) => ({
   photoUrl: `/ordonnances/${o.id}/photo`,
   titre: o.titre,
 note: o.note,
+ medecinId: o.medecin_id ?? null,
+  medecinNom: o.medecin_nom ?? null,
 });
 
 function lireImage(b64) {
@@ -45,6 +48,8 @@ router.post('/', express.json({ limit: '12mb' }), async (req, res) => {
     return bad(res, 'DATE_INVALIDE', 'Date invalide (AAAA-MM-JJ)');
   if (emission && expiration && expiration < emission)
     return bad(res, 'DATES_INCOHERENTES', 'Expiration avant émission');
+  if (!UUID.test(String(b.medecinId ?? '')))
+    return bad(res, 'MEDECIN_REQUIS', 'Médecin requis');
 
   const client = await pool.connect();
   const titre = String(b.titre ?? '').trim().slice(0, 100) || null;
@@ -55,16 +60,22 @@ const note = String(b.note ?? '').trim().slice(0, 500) || null;
     const patientId = await patientAutorise(client, req.userId, b.patientId);
     if (!patientId)
       return res.status(403).json({ code: 'PATIENT_NON_AUTORISE', error: 'Patient non autorisé' });
+        const med = await client.query(
+      'SELECT 1 FROM medecin WHERE id = $1 AND patient_id = $2',
+      [b.medecinId, patientId],
+    );
+    if (med.rowCount === 0)
+      return bad(res, 'MEDECIN_INVALIDE', 'Médecin introuvable pour ce patient');
 
     await fs.mkdir(UPLOAD_DIR, { recursive: true });
     fichier = `${crypto.randomUUID()}.${img.ext}`;
     await fs.writeFile(path.join(UPLOAD_DIR, fichier), img.buf);
 
- const { rows } = await client.query(
-  `INSERT INTO ordonnance (patient_id, date_emission, date_expiration, photo_url, titre, note)
-   VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-  [patientId, emission, expiration, fichier, titre, note],
-);
+     const { rows } = await client.query(
+      `INSERT INTO ordonnance (patient_id, date_emission, date_expiration, photo_url, titre, note, medecin_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [patientId, emission, expiration, fichier, titre, note, b.medecinId],
+    );
     
     res.status(201).json({ ordonnance: sortie(rows[0]) });
   } catch (e) {
@@ -86,8 +97,11 @@ router.get('/', async (req, res) => {
     if (!patientId)
       return res.status(403).json({ code: 'PATIENT_NON_AUTORISE', error: 'Patient non autorisé' });
     const { rows } = await client.query(
-      `SELECT o.*, (SELECT count(*) FROM traitement t WHERE t.ordonnance_id = o.id)::int AS nb_medicaments
-         FROM ordonnance o WHERE o.patient_id = $1
+           `SELECT o.*, m.nom AS medecin_nom,
+              (SELECT count(*) FROM traitement t WHERE t.ordonnance_id = o.id)::int AS nb_medicaments
+         FROM ordonnance o
+         LEFT JOIN medecin m ON m.id = o.medecin_id
+        WHERE o.patient_id = $1
         ORDER BY o.date_emission DESC NULLS LAST, o.id`,
       [patientId],
     );
