@@ -1,3 +1,4 @@
+
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -6,11 +7,22 @@ import { Card, GradientBox } from '../../components';
 import { colors, fontSize, radius, spacing } from '../../theme';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useState, useCallback } from 'react';
-import { getMyProfile, getSelectedPatient, type SelectedPatient } from '../../utils/api';
+import {
+  getMyProfile,
+  getSelectedPatient,
+  listerRendezVous,
+  type RendezVousApi,
+  type SelectedPatient,
+} from '../../utils/api';
+import { formatShortDate, formatTime } from '../../utils/datetime';
 import { NotifBell } from '../../components/NotifBell';
+
 import { BadgeEtat, BoutonsPrise } from '../../components/DoseActions';
 import { useDoses } from '../../utils/useRappels';
 import type { DoseEtat, StatutSaisi } from '../../utils/rappels';
+
+
+
 // ---- Données de démo (à remplacer par la vraie source plus tard) ----
 
 
@@ -42,6 +54,7 @@ const STATS: Record<Period, Stats> = {
 };
 
 const STREAK_DAYS = 7;
+const MAX_RDV_ACCUEIL = 3;
 
 // ---- Petits composants internes ----
 function Donut({ value }: { value: number }) {
@@ -87,6 +100,7 @@ function Sparkline({ data, color, dashed }: { data: number[]; color: string; das
     />
   );
 }
+
 function SectionHeader({
   title,
   action,
@@ -164,6 +178,7 @@ export function HomeScreen() {
   const router = useRouter();
   const [suivi, setSuivi] = useState<SelectedPatient | null>(null);
   const [firstName, setFirstName] = useState<string | null>(null);
+
   const { doses, nbEnAttente, agir } = useDoses();
 const pris = doses.filter((d) => d.etat === 'PRIS').length;
 const restantes = doses.filter((d) => d.etat !== 'PRIS' && d.etat !== 'OUBLIE').length;
@@ -175,7 +190,10 @@ const dateJour = new Date().toLocaleDateString('fr-FR', {
   month: 'long',
 });
 
-  // À chaque retour sur l'écran : patient suivi + prénom de l'utilisateur connecté
+  const [rdvs, setRdvs] = useState<RendezVousApi[]>([]);
+
+
+  // À chaque retour sur l'écran : patient suivi, prénom, prochains rdv
   useFocusEffect(
     useCallback(() => {
       let active = true;
@@ -191,6 +209,20 @@ const dateJour = new Date().toLocaleDateString('fr-FR', {
         .catch(() => {
           // non connecté ou serveur injoignable : on garde « Bonjour » tout court
         });
+
+     listerRendezVous()
+  .then((r) => {
+    if (!active) return;
+    const maintenant = Date.now();
+    const aVenir = r
+      .filter((x) => new Date(x.dateRdv).getTime() >= maintenant)
+      .sort((a, b) => new Date(a.dateRdv).getTime() - new Date(b.dateRdv).getTime());
+    setRdvs(aVenir.slice(0, MAX_RDV_ACCUEIL));
+  })
+  .catch(() => {
+    if (active) setRdvs([]);
+  });
+  
 
       return () => {
         active = false;
@@ -322,24 +354,41 @@ const dateJour = new Date().toLocaleDateString('fr-FR', {
           </View>
         </Card>
 
-        {/* Prochain rendez-vous */}
+        {/* Prochains rendez-vous (3 max) */}
         <SectionHeader
-          title="Prochain rendez-vous"
+          title="Prochains rendez-vous"
           action="Voir tout ›"
           onPress={() => router.push('/rdv-notes')}
         />
-        <Card style={styles.card}>
-          <View style={styles.apptRow}>
-            <View style={styles.smallIcon}>
-              <Ionicons name="calendar-outline" size={16} color={colors.brand} />
-            </View>
-            <View style={styles.flex}>
-              <Text style={styles.apptDate}>15 nov. 2026 · 10:30</Text>
-              <Text style={styles.apptDoc}>Dr. Benali · Cardiologue</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-          </View>
-        </Card>
+        {rdvs.length === 0 ? (
+          <Card style={styles.card}>
+            <Text style={styles.apptDoc}>Aucun rendez-vous à venir</Text>
+          </Card>
+        ) : (
+          rdvs.map((r) => {
+            const d = new Date(r.dateRdv);
+            return (
+              <Card key={r.id} style={styles.card}>
+                <Pressable style={styles.apptRow} onPress={() => router.push('/rdv-notes')}>
+                  <View style={styles.smallIcon}>
+                    <Ionicons name="calendar-outline" size={16} color={colors.brand} />
+                  </View>
+                  <View style={styles.flex}>
+                    <Text style={styles.apptDate}>
+                      {formatShortDate(d)} · {formatTime(d)}
+                    </Text>
+                  
+
+                    <Text style={styles.apptDoc}>
+                      {[r.medecin, r.specialite].filter(Boolean).join(' · ') || 'Médecin non précisé'}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+                </Pressable>
+              </Card>
+            );
+          })
+        )}
 
         {/* Prises du jour */}
         <SectionHeader

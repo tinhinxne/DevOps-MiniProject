@@ -1,64 +1,101 @@
+
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Button, Card, Input } from '../../components';
 import { colors, fontSize, radius, spacing } from '../../theme';
+import {
+  cocherNote,
+  creerNote,
+  listerNotes,
+  prochainRendezVous,
+  type NoteApi,
+  type RendezVousApi,
+} from '../../utils/api';
 import { formatShortDate } from '../../utils/datetime';
-import { getNotes, getQuestionsGroup, Note, Question } from './mock';
 
 type Kind = 'question' | 'note';
 
 type Props = { onSaved?: () => void };
 
-export function NotesTab({ onSaved }: Props) {
-  const group = getQuestionsGroup();
-  const [questions, setQuestions] = useState<Question[]>(group.items);
-  const [notes, setNotes] = useState<Note[]>(getNotes());
+export function NotesTab(_props: Props) {
+  const [notes, setNotes] = useState<NoteApi[]>([]);
+  const [prochain, setProchain] = useState<RendezVousApi | null>(null);
   const [kind, setKind] = useState<Kind>('question');
   const [text, setText] = useState('');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [saving, setSaving] = useState(false);
 
-  const toggleQuestion = (id: string) => {
-    setQuestions((current) =>
-      current.map((q) => (q.id === id ? { ...q, done: !q.done } : q)),
-    );
+  // Au chargement : notes et questions + prochain rendez-vous (pour le titre)
+  useEffect(() => {
+    listerNotes()
+      .then(setNotes)
+      .catch((e: any) => setError(e.message || 'Impossible de charger les notes.'));
+    prochainRendezVous()
+      .then(setProchain)
+      .catch(() => {});
+  }, []);
+
+  // Questions du prochain rdv (ou pas encore rattachées à un rdv)
+  const questions = notes.filter(
+    (n) => n.type === 'QUESTION' && (!n.rendezVousId || n.rendezVousId === prochain?.id),
+  );
+  const memos = notes.filter((n) => n.type === 'MEMO');
+
+  const groupTitle = prochain
+    ? `À poser à ${prochain.medecin ?? 'votre médecin'} · ${formatShortDate(new Date(prochain.dateRdv))}`
+    : 'Questions à poser au médecin';
+
+  const toggleQuestion = async (id: string, fait: boolean) => {
+    // on met à jour l'écran tout de suite, puis on prévient le serveur
+    setNotes((current) => current.map((n) => (n.id === id ? { ...n, fait: !fait } : n)));
+    try {
+      await cocherNote(id, !fait);
+    } catch (e: any) {
+      setNotes((current) => current.map((n) => (n.id === id ? { ...n, fait } : n)));
+      setError(e.message || 'Impossible de mettre à jour la question.');
+    }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const value = text.trim();
-    if (!value) return;
-    // TODO: enregistrer en base (SQLite) quand elle sera prête
-    if (kind === 'question') {
-      setQuestions((current) => [
-        ...current,
-        { id: Date.now().toString(), text: value, done: false },
-      ]);
-    } else {
-      setNotes((current) => [
-        ...current,
-        { id: Date.now().toString(), date: formatShortDate(new Date()), text: value },
-      ]);
+    if (!value || saving) return;
+    setError('');
+    setSuccess('');
+    setSaving(true);
+    try {
+      const created = await creerNote({
+        type: kind === 'question' ? 'QUESTION' : 'MEMO',
+        contenu: value,
+      });
+      setNotes((current) => [...current, created]);
+      setText('');
+      setSuccess(kind === 'question' ? 'Question ajoutée ✓' : 'Note enregistrée ✓');
+    } catch (e: any) {
+      setError(e.message || "Impossible d'enregistrer.");
+    } finally {
+      setSaving(false);
     }
-    setText('');
-        onSaved?.();
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.groupTitle}>{group.title}</Text>
+      <Text style={styles.groupTitle}>{groupTitle}</Text>
 
       {questions.map((q) => (
         <Pressable
           key={q.id}
-          onPress={() => toggleQuestion(q.id)}
+          onPress={() => toggleQuestion(q.id, q.fait)}
           accessibilityRole="checkbox"
-          accessibilityState={{ checked: q.done }}
+          accessibilityState={{ checked: q.fait }}
         >
           <Card style={styles.item}>
-            <View style={[styles.checkbox, q.done && styles.checkboxDone]}>
-              {q.done ? <Ionicons name="checkmark" size={16} color={colors.white} /> : null}
+            <View style={[styles.checkbox, q.fait && styles.checkboxDone]}>
+              {q.fait ? <Ionicons name="checkmark" size={16} color={colors.white} /> : null}
             </View>
             <View style={styles.itemText}>
-              <Text style={[styles.questionText, q.done && styles.questionDone]}>{q.text}</Text>
+              <Text style={[styles.questionText, q.fait && styles.questionDone]}>{q.contenu}</Text>
               <Text style={styles.caption}>Question</Text>
             </View>
           </Card>
@@ -70,11 +107,11 @@ export function NotesTab({ onSaved }: Props) {
         <Text style={styles.sectionTitleText}>Notes personnelles</Text>
       </View>
 
-      {notes.map((n) => (
+      {memos.map((n) => (
         <Card key={n.id} style={styles.item}>
           <View style={styles.itemText}>
-            <Text style={styles.noteDate}>{n.date}</Text>
-            <Text style={styles.caption}>{n.text}</Text>
+            <Text style={styles.noteDate}>{formatShortDate(new Date(n.dateCreation))}</Text>
+            <Text style={styles.caption}>{n.contenu}</Text>
           </View>
         </Card>
       ))}
@@ -106,8 +143,15 @@ export function NotesTab({ onSaved }: Props) {
         numberOfLines={3}
       />
 
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {success ? <Text style={styles.success}>{success}</Text> : null}
       <View style={styles.submit}>
-        <Button title="Enregistrer" variant="brand" onPress={handleSave} />
+        <Button
+          title={saving ? 'Enregistrement...' : 'Enregistrer'}
+          variant="brand"
+          onPress={handleSave}
+          disabled={saving}
+        />
       </View>
     </View>
   );
@@ -158,4 +202,6 @@ const styles = StyleSheet.create({
   chipText: { fontSize: fontSize.sm, fontWeight: '700', color: colors.brand },
   chipTextSelected: { color: colors.white },
   submit: { marginTop: spacing.sm },
+  error: { color: 'red', fontSize: fontSize.sm, textAlign: 'center' },
+  success: { color: colors.success, fontSize: fontSize.sm, textAlign: 'center', fontWeight: '600' },
 });

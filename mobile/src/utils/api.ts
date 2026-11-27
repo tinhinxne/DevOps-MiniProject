@@ -382,6 +382,7 @@ export async function removeMedecin(id: string, personId?: string): Promise<void
     headers: await authHeaders(),
   });
 }
+
 // personId seulement en mode aidant (sinon 403 : sa propre fiche n'est pas dans accompagnement)
 async function personIdCourant(): Promise<string | undefined> {
   if ((await getMode()) !== 'aidant') return undefined;
@@ -412,3 +413,104 @@ export async function supprimerTraitement(id: string): Promise<void> {
     headers: await authHeaders(),
   });
 }
+
+
+export type RendezVousApi = {
+  id: string;
+  patientId: string;
+  dateRdv: string; // date ISO
+  medecin: string | null;
+  specialite: string | null;
+  rappel: string | null; // texte lisible, écrit par le serveur
+  rappelJour: 'MEME_JOUR' | '1J' | '2J' | null;
+  rappelHeure: string | null; // 'HH:MM'
+  rappelLe: string | null; // date ISO du rappel
+  lieu: string | null;
+};
+
+export async function listerRendezVous(patientId?: string): Promise<RendezVousApi[]> {
+  const id = patientId ?? (await patientCourantId());
+  const data = await apiFetch(`/rendez-vous?patientId=${encodeURIComponent(id)}`, {
+    headers: await authHeaders(),
+  });
+  return data.rendezVous;
+}
+
+// Pour le dashboard (on l'utilisera à l'étape suivante)
+export async function prochainRendezVous(patientId?: string): Promise<RendezVousApi | null> {
+  const id = patientId ?? (await patientCourantId());
+  const data = await apiFetch(`/rendez-vous/prochain?patientId=${encodeURIComponent(id)}`, {
+    headers: await authHeaders(),
+  });
+  return data.rendezVous;
+}
+
+export async function creerRendezVous(body: {
+  dateRdv: string;
+  medecin: string;
+  specialite?: string;
+  lieu?: string;
+  rappelJour?: 'MEME_JOUR' | '1J' | '2J';
+  rappelHeure?: string; // 'HH:MM'
+  rappelLe?: string; // date ISO du rappel, calculée par l'appli
+  patientId?: string;
+}): Promise<RendezVousApi> {
+  const data = await apiFetch('/rendez-vous', {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: JSON.stringify({ ...body, patientId: body.patientId ?? (await patientCourantId()) }),
+  });
+  return data.rendezVous;
+}
+
+
+
+// --- Notes et questions ---
+export type NoteApi = {
+  id: string;
+  patientId: string;
+  rendezVousId: string | null;
+  type: 'QUESTION' | 'MEMO';
+  contenu: string;
+  fait: boolean;
+  dateCreation: string; // date ISO
+};
+
+export async function listerNotes(patientId?: string): Promise<NoteApi[]> {
+  const id = patientId ?? (await patientCourantId());
+  const data = await apiFetch(`/notes?patientId=${encodeURIComponent(id)}`, {
+    headers: await authHeaders(),
+  });
+  return data.notes;
+}
+
+export async function creerNote(body: {
+  type: 'QUESTION' | 'MEMO';
+  contenu: string;
+  rendezVousId?: string;
+  patientId?: string;
+}): Promise<NoteApi> {
+  const data = await apiFetch('/notes', {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: JSON.stringify({ ...body, patientId: body.patientId ?? (await patientCourantId()) }),
+  });
+  return data.note;
+}
+
+export async function cocherNote(id: string, fait: boolean): Promise<NoteApi> {
+  const data = await apiFetch(`/notes/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: await authHeaders(),
+    body: JSON.stringify({ fait }),
+  });
+  return data.note;
+}
+
+export async function supprimerNote(id: string): Promise<void> {
+  await apiFetch(`/notes/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: await authHeaders(),
+  });
+}
+
